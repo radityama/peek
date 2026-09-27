@@ -18,6 +18,7 @@ it('emits one valid JSON event per line including child output', () => {
     .split('\n')
     .map((line) => JSON.parse(line))
   expect(events).toHaveLength(3)
+  expect(events.every((event) => event.schemaVersion === 1)).toBe(true)
   expect(events.map((event) => event.type)).toEqual([
     'start',
     'child-output',
@@ -27,5 +28,9 @@ it('emits one valid JSON event per line including child output', () => {
     schemaVersion: 1,
     stream: 'stderr',
     content: 'server failed\n',
+  })
+  expect(events[2]).toMatchObject({
+    localUrl: 'http://localhost:3000',
+    publicUrl: 'https://test.trycloudflare.com',
   })
 })

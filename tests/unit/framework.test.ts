@@ -24,4 +24,10 @@ describe('framework hints', () => {
   it('recognizes a framework in production dependencies', () => {
     expect(detectFramework({ dependencies: { vite: '1.0.0' } })).toBe('vite')
   })
+
+  it('prefers a specific framework over its Vite dependency', () => {
+    expect(
+      detectFramework({ dependencies: { vite: '1.0.0', next: '1.0.0' } }),
+    ).toBe('next')
+  })
 })

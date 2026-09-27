@@ -62,6 +62,7 @@ it('keeps help and version machine-readable with --json', async () => {
   expect(JSON.parse(help.output)).toMatchObject({
     schemaVersion: 1,
     type: 'help',
+    text: expect.stringContaining('peek dev'),
   })
 })
 

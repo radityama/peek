@@ -129,6 +129,8 @@ export async function runDoctor(
   }
 
   try {
+    if (!['linux', 'darwin', 'win32'].includes(process.platform))
+      throw new Error('Process socket inspection is unsupported')
     if (process.platform === 'linux') {
       await access('/proc/net/tcp')
       await access('/proc/net/tcp6')

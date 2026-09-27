@@ -25,3 +25,17 @@ it('reports actionable local checks without a public tunnel', async () => {
     await rm(cwd, { recursive: true, force: true })
   }
 })
+
+it('reports an invalid config with a remedy', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'peek-doctor-'))
+  try {
+    await writeFile(join(cwd, 'peek.config.ts'), 'export default { bad: true }')
+    const checks = await runDoctor({ cwd, networkCheck: async () => true })
+    expect(checks.find((check) => check.name === 'config')).toMatchObject({
+      status: 'fail',
+      remedy: expect.any(String),
+    })
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
