@@ -1,6 +1,12 @@
 import { createServer } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
-import { extractLocalPorts, parsePort, probePort } from '../../src/core/port.js'
+import { privateLanAddresses } from '../../src/core/lan.js'
+import {
+  extractLocalPorts,
+  parsePort,
+  probeHostPort,
+  probePort,
+} from '../../src/core/port.js'
 
 const servers: ReturnType<typeof createServer>[] = []
 
@@ -13,6 +19,21 @@ afterEach(async () => {
         }),
     ),
   )
+})
+
+it('probes a server through a private interface when one is available', async () => {
+  const lanAddress = privateLanAddresses()[0]
+  if (!lanAddress) return
+  const server = createServer((socket) => socket.end())
+  servers.push(server)
+  await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve))
+  const address = server.address()
+  if (!address || typeof address === 'string')
+    throw new Error('Missing address')
+  expect(await probeHostPort(lanAddress, address.port)).toBe(true)
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  servers.splice(servers.indexOf(server), 1)
+  expect(await probeHostPort(lanAddress, address.port)).toBe(false)
 })
 
 describe('port parsing', () => {
