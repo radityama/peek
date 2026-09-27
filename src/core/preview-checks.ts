@@ -63,7 +63,10 @@ export async function checkPreview(
         framework,
         new URL(publicUrl).hostname,
       )
-      if (rejection) findings.push(rejection)
+      if (rejection) {
+        findings.push(rejection)
+        return findings
+      }
       break
     } catch {
       if (signal.aborted) return findings

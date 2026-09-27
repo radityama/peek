@@ -232,6 +232,31 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
   expect(lifecycle.isStopped).toBe(true)
 })
 
+it('retries an initial tunnel failure while keeping the dev server alive', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const retryFailure = vi.fn()
+  let resolveReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve
+  })
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(['crash', 'ready']),
+    retryDelaysMs: [1],
+    onDevOutput: () => {},
+    onReady: resolveReady,
+    onReconnectFailure: retryFailure,
+  })
+  await ready
+  expect(retryFailure).toHaveBeenCalledTimes(1)
+  expect(lifecycle.isStopped).toBe(false)
+  lifecycle.requestStop()
+  await expect(running).resolves.toBeUndefined()
+})
+
 function isRunning(pid: number): boolean {
   if (pid <= 0) return false
   try {

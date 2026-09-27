@@ -1,5 +1,5 @@
 export interface PeekConfig {
-  command?: string[]
+  command?: [string, ...string[]]
   port?: number
   provider?: 'cloudflare'
   qr?: boolean

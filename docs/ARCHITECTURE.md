@@ -8,10 +8,12 @@ A single lifecycle object coordinates cancellation and cleanup. Optional
 ```mermaid
 flowchart TD
     CLI[CLI / flags] --> Project[Project and command selection]
-    Project --> Binary[Verified cloudflared cache]
-    Binary --> Dev[Dev process]
+    Project --> Dev[Dev process]
     Dev --> Detect[Port signals and readiness]
-    Detect --> Provider[Tunnel provider]
+    Detect -->|LAN mode| LanURL[LAN URL]
+    Project -->|public mode| Binary[Verified cloudflared cache]
+    Binary --> Provider[Tunnel provider]
+    Detect -->|public mode| Provider
     Provider --> URL[Local and public URLs]
     Life[Lifecycle] -. stop .-> Dev
     Life -. stop .-> Provider

@@ -178,7 +178,7 @@ export class CloudflareProvider implements TunnelProvider {
     const output = this.diagnostics.join('\n')
     const configConflict = /config\.ya?ml/i.test(output)
     return new PeekError(
-      'TUNNEL_CONNECTION_ERROR',
+      configConflict ? 'TUNNEL_CONFIG_ERROR' : 'TUNNEL_CONNECTION_ERROR',
       `Cloudflare tunnel exited before a public URL was available (code ${result.exitCode ?? 'unknown'}).`,
       configConflict
         ? 'A ~/.cloudflared/config.yaml may block Quick Tunnels. Move it temporarily and retry.'

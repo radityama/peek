@@ -169,8 +169,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       throw new Error('Tunnel provider is required outside LAN mode')
     options.onState?.('connecting')
     lifecycle.setProvider(provider)
-    let connection = await provider.connect({ port, signal })
-    const reportReady = (): void => {
+    const reportReady = (connection: { url: string }): void => {
       const localUrl = `http://localhost:${port}`
       options.onReady?.({
         localUrl,
@@ -200,31 +199,25 @@ export async function runPeek(options: RunOptions): Promise<void> {
         )
       }
     }
-    reportReady()
-
     const delays = options.retryDelaysMs?.length
       ? options.retryDelaysMs
       : DEFAULT_RETRY_DELAYS
     let retryCount = 0
     let failureCount = 0
+    let connection: Awaited<ReturnType<TunnelProvider['connect']>> | undefined
     while (true) {
-      const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
-      if (outcome.kind === 'cancel') return
-      if (outcome.kind === 'dev') throw serverExit(outcome.exit)
-
-      previewController?.abort()
-      options.onState?.('reconnecting')
-      retryCount++
-      while (true) {
-        const waitMs =
-          delays[Math.min(retryCount - 1, delays.length - 1)] ?? 30_000
-        const waited = await waitForOutcome(
-          delay(waitMs, undefined, { signal }).catch(() => undefined),
-          dev.exit,
-          signal,
-        )
-        if (waited.kind === 'cancel') return
-        if (waited.kind === 'dev') throw serverExit(waited.exit)
+      while (!connection) {
+        if (retryCount > 0) {
+          const waitMs =
+            delays[Math.min(retryCount - 1, delays.length - 1)] ?? 30_000
+          const waited = await waitForOutcome(
+            delay(waitMs, undefined, { signal }).catch(() => undefined),
+            dev.exit,
+            signal,
+          )
+          if (waited.kind === 'cancel') return
+          if (waited.kind === 'dev') throw serverExit(waited.exit)
+        }
         signal.throwIfAborted()
         await provider.disconnect()
         try {
@@ -236,10 +229,12 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (connected.kind === 'cancel') return
           if (connected.kind === 'dev') throw serverExit(connected.exit)
           connection = connected.value
-          reportReady()
-          break
         } catch (error) {
-          if (error instanceof PeekError && error.code === 'SERVER_START_ERROR')
+          if (
+            error instanceof PeekError &&
+            (error.code === 'SERVER_START_ERROR' ||
+              error.code === 'TUNNEL_CONFIG_ERROR')
+          )
             throw error
           signal.throwIfAborted()
           retryCount++
@@ -250,6 +245,14 @@ export async function runPeek(options: RunOptions): Promise<void> {
           )
         }
       }
+      reportReady(connection)
+      const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
+      if (outcome.kind === 'cancel') return
+      if (outcome.kind === 'dev') throw serverExit(outcome.exit)
+      previewController?.abort()
+      options.onState?.('reconnecting')
+      retryCount++
+      connection = undefined
     }
   } catch (error) {
     if (!lifecycle.wasRequested) throw error

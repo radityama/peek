@@ -104,6 +104,20 @@ it('reports an early tunnel exit', async () => {
   })
 })
 
+it('reports a local config conflict as nonrecoverable', async () => {
+  const fake = fakeChild()
+  const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
+  const connecting = provider.connect({
+    port: 3000,
+    signal: new AbortController().signal,
+  })
+  fake.stderr.write('config.yaml blocks Quick Tunnels\n')
+  fake.exit(1)
+  await expect(connecting).rejects.toMatchObject({
+    code: 'TUNNEL_CONFIG_ERROR',
+  })
+})
+
 it('stops tunnel startup when cancelled', async () => {
   const fake = fakeChild()
   const controller = new AbortController()

@@ -1,6 +1,6 @@
 # Decisions
 
-These lightweight records explain choices made for v0.1. Revisit them when
+These lightweight records explain choices made across v0.1 and v0.2. Revisit them when
 evidence changes, while preserving the product and security invariants in
 `AGENTS.md`.
 
@@ -108,7 +108,7 @@ code; Peek does not evaluate strings as shell commands.
 
 ## 11. Reconnect without restarting the dev server
 
-**Decision:** A dropped Quick Tunnel triggers bounded, abortable retry attempts
+**Decision:** A dropped Quick Tunnel triggers retries with capped, abortable backoff
 while the verified dev server stays alive. A new tunnel URL replaces the old
 one. Ctrl+C and a dev-server exit still stop the entire lifecycle.
 

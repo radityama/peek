@@ -50,3 +50,21 @@ it('does not require a config file', async () => {
   directories.push(directory)
   expect(await loadConfig(directory)).toBeUndefined()
 })
+
+it('rejects invalid config fields and a throwing config file', async () => {
+  expect(() => validateConfig({ port: 70000 })).toThrow('port must be')
+  expect(() => validateConfig({ provider: 'other' })).toThrow(
+    'provider must be',
+  )
+  expect(() => validateConfig({ qr: 'yes' })).toThrow('qr must be')
+
+  const directory = await mkdtemp(join(tmpdir(), 'peek-config-'))
+  directories.push(directory)
+  await writeFile(
+    join(directory, 'peek.config.ts'),
+    'throw new Error("broken config")',
+  )
+  await expect(loadConfig(directory)).rejects.toMatchObject({
+    code: 'PROJECT_INVALID',
+  })
+})

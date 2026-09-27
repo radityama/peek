@@ -10,8 +10,14 @@ export async function loadConfig(cwd: string): Promise<PeekConfig | undefined> {
   const path = join(cwd, configFile)
   try {
     await access(path)
-  } catch {
-    return undefined
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw new PeekError(
+      'PROJECT_INVALID',
+      `Peek could not access ${configFile}.`,
+      'Fix the configuration file permissions or remove it.',
+      cause,
+    )
   }
   let value: unknown
   try {
@@ -47,7 +53,7 @@ export function validateConfig(value: unknown): PeekConfig {
     ) {
       throw invalidConfig('command must be a nonempty array of string tokens.')
     }
-    config.command = command as string[]
+    config.command = command as [string, ...string[]]
   }
   if (input.port !== undefined) {
     if (

@@ -38,7 +38,7 @@ describe('port parsing', () => {
     ['SvelteKit', '  ➜  Local: http://localhost:5173/', 5173],
     ['Node', 'Server listening on port 8080', 8080],
   ] as const)('parses a %s startup line', (_framework, line, port) => {
-    expect(extractLocalPorts(line)).toContain(port)
+    expect(extractLocalPorts(line)).toEqual([port])
   })
 
   it('rejects invalid explicit ports', () => {

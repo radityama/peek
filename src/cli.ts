@@ -167,6 +167,14 @@ async function execute(args: CliArgs): Promise<void> {
       }
     }
     const config = await loadConfig(process.cwd())
+    if (args.lan && config?.provider) {
+      throw new PeekError(
+        'USAGE_ERROR',
+        '--lan cannot be combined with a configured tunnel provider.',
+        'Remove provider from peek.config.ts to use the local network only.',
+      )
+    }
+    const selectedProvider = args.provider ?? config?.provider ?? 'cloudflare'
     const effectiveQr = args.qr ?? config?.qr
     const qrMode: QrMode =
       effectiveQr === true ? 'on' : effectiveQr === false ? 'off' : 'auto'
@@ -188,7 +196,7 @@ async function execute(args: CliArgs): Promise<void> {
     if (!isDoctor) output.title()
     if (project) output.success(`${project.packageManager} project`)
     let provider: CloudflareProvider | undefined
-    if (!args.lan) {
+    if (!args.lan && selectedProvider === 'cloudflare') {
       output.info('Preparing tunnel engine...')
       const binaryPath = await ensureCloudflared({
         signal: lifecycle.signal,

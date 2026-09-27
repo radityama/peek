@@ -20,4 +20,8 @@ describe('framework hints', () => {
   it('falls back to generic Node and ignores malformed metadata', () => {
     expect(detectFramework({ dependencies: null })).toBe('node')
   })
+
+  it('recognizes a framework in production dependencies', () => {
+    expect(detectFramework({ dependencies: { vite: '1.0.0' } })).toBe('vite')
+  })
 })

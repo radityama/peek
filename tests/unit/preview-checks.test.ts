@@ -18,7 +18,7 @@ afterEach(async () => {
   )
 })
 
-it('reports blocked host and a failed public HMR upgrade', async () => {
+it('reports a blocked host without a misleading HMR failure', async () => {
   const findings = await checkPreview(
     'http://localhost:3000',
     'https://fixture.trycloudflare.com',
@@ -32,10 +32,7 @@ it('reports blocked host and a failed public HMR upgrade', async () => {
       probeUpgrade: async (url) => url.startsWith('http:'),
     },
   )
-  expect(findings.map((finding) => finding.kind)).toEqual([
-    'blocked-host',
-    'hmr-failed',
-  ])
+  expect(findings.map((finding) => finding.kind)).toEqual(['blocked-host'])
 })
 
 it('does not claim HMR failed when the public probe cannot connect', async () => {
