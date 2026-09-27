@@ -1,6 +1,6 @@
 {
   "name": "@radityprtama/peek",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Run your dev server. Share it instantly.",
   "repository": {
     "type": "git",
@@ -13,6 +13,14 @@
   "type": "module",
   "bin": {
     "peek": "dist/cli.js"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js",
+      "default": "./dist/config.js"
+    }
   },
   "files": [
     "dist",
@@ -43,6 +51,7 @@
     "citty": "^0.2.2",
     "consola": "^3.4.2",
     "execa": "^10.0.1",
+    "jiti": "^2.7.0",
     "package-manager-detector": "^1.8.0",
     "picocolors": "^1.1.1",
     "qrcode-terminal": "^0.12.0",

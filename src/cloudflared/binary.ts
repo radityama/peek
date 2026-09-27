@@ -31,6 +31,18 @@ export interface BinaryOptions {
   onDownload?: () => void
 }
 
+export async function inspectCachedCloudflared(
+  options: Pick<BinaryOptions, 'cacheDir' | 'platform' | 'arch'> = {},
+): Promise<'verified' | 'missing-or-invalid'> {
+  const platform = options.platform ?? process.platform
+  const arch = options.arch ?? process.arch
+  const asset = selectCloudflaredAsset(platform, arch)
+  const path = cachedBinaryPath(platform, arch, options.cacheDir)
+  return (await validCachedBinary(path, asset.binarySha256))
+    ? 'verified'
+    : 'missing-or-invalid'
+}
+
 export async function ensureCloudflared(
   options: BinaryOptions = {},
 ): Promise<string> {
@@ -40,7 +52,7 @@ export async function ensureCloudflared(
   const root = options.cacheDir ?? join(homedir(), '.peek', 'bin')
   const folder = join(root, `${platform}-${arch}`)
   const suffix = platform === 'win32' ? '.exe' : ''
-  const binaryPath = join(folder, `cloudflared-${CLOUDFLARED_VERSION}${suffix}`)
+  const binaryPath = cachedBinaryPath(platform, arch, options.cacheDir)
 
   if (await validCachedBinary(binaryPath, asset.binarySha256)) return binaryPath
 
@@ -108,6 +120,20 @@ export async function ensureCloudflared(
       rm(temporaryArchive, { force: true }),
     ])
   }
+}
+
+function cachedBinaryPath(
+  platform: string,
+  arch: string,
+  cacheDir?: string,
+): string {
+  const root = cacheDir ?? join(homedir(), '.peek', 'bin')
+  const suffix = platform === 'win32' ? '.exe' : ''
+  return join(
+    root,
+    `${platform}-${arch}`,
+    `cloudflared-${CLOUDFLARED_VERSION}${suffix}`,
+  )
 }
 
 async function validCachedBinary(

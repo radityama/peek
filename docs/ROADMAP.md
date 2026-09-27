@@ -33,6 +33,8 @@ Status: **Released**
 
 ## v0.2 — Reliable everywhere
 
+Status: **Released**
+
 Theme: make `peek` boringly reliable.
 
 **Framework-aware detection.** Next.js, Vite, Astro, Nuxt, TanStack Start, Remix / React Router, SvelteKit, generic Node servers. Parse common output patterns without coupling the core to any framework.

@@ -1,5 +1,10 @@
 # Troubleshooting
 
+Run `peek doctor` for local setup checks, or `peek doctor --live` to start a
+temporary preview and check the public host and supported HMR upgrades. Use
+`peek --lan` for a phone on the same Wi-Fi; the dev server must listen on a
+LAN address such as `0.0.0.0`.
+
 Run `peek --verbose` for Cloudflare diagnostics and error causes. Framework
 stdout and stderr are already shown in normal mode.
 
@@ -15,7 +20,8 @@ stdout and stderr are already shown in normal mode.
 | Server readiness times out | Confirm the app listens on `127.0.0.1` and inspect its startup logs. A service bound only to another interface cannot be tunneled by Peek's loopback origin. |
 | `cloudflared` download fails | Check HTTPS access to GitHub releases, proxy/firewall settings, disk space, and `~/.peek/bin` permissions; retry. Peek does not use an unverified binary. |
 | Cloudflare tunnel fails | Check internet access and `peek --verbose`. A `~/.cloudflared/config.yaml` may prevent Quick Tunnels; move it temporarily if appropriate, then retry. Peek does not edit it. |
-| Network or firewall blocks the tunnel | Permit the network connections required by `cloudflared`, or use a different network. Peek v0.1 has no fallback provider. |
+| Dev server rejects the tunnel hostname | Retry with `peek --host-header localhost`. The origin will see `Host: localhost`, so check apps that generate absolute URLs from the Host header. |
+| Network or firewall blocks the tunnel | Permit the network connections required by `cloudflared`, use a different network, or try `--lan` on the same Wi-Fi. |
 | QR code is missing | Confirm stdout is a TTY and the terminal is wide and tall enough. The public URL is always printed as text. |
 | Windows child remains after exit | Close the process from Task Manager or `taskkill /T /F /PID <pid>`, then report the exact command and Windows version. Execa uses Windows process-tree termination when available. |
 

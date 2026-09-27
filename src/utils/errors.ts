@@ -8,6 +8,7 @@ export type PeekErrorCode =
   | 'SERVER_TIMEOUT'
   | 'CLOUDFLARED_INSTALL_ERROR'
   | 'TUNNEL_CONNECTION_ERROR'
+  | 'TUNNEL_CONFIG_ERROR'
   | 'USAGE_ERROR'
 
 export class PeekError extends Error {

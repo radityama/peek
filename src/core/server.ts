@@ -113,7 +113,8 @@ export async function waitForServer(
             'Check the dev server output and select its port with --port <number>.',
           )
         }
-        return selected
+        if (owned.includes(selected) || commonPorts.includes(selected))
+          return selected
       }
 
       // Once a dev process announces a port, a concurrent listener must not
@@ -264,17 +265,39 @@ async function inspectMac(rootPid: number): Promise<number[]> {
 }
 
 async function inspectWindows(rootPid: number): Promise<number[]> {
+  const directPorts = new Set<number>()
+  try {
+    const { stdout: netstat } = await execFileAsync(
+      'netstat',
+      ['-ano', '-p', 'tcp'],
+      { timeout: 2000 },
+    )
+    for (const line of netstat.split('\n')) {
+      const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(
+        line,
+      )
+      if (match?.[1] && Number(match[2]) === rootPid)
+        directPorts.add(Number(match[1]))
+    }
+  } catch {
+    // Descendant inspection below remains available without netstat.
+  }
   const script = `$ids = @(${rootPid}); $all = Get-CimInstance Win32_Process; do { $new = @($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId); $next = @($new | Where-Object { $ids -notcontains $_ }); $ids += $next } while ($next.Count -gt 0); Get-NetTCPConnection -State Listen | Where-Object { $ids -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalPort`
-  const { stdout } = await execFileAsync(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-Command', script],
-    { timeout: 2000 },
-  )
-  return stdout
-    .trim()
-    .split(/\s+/)
-    .map(Number)
-    .filter((port) => Number.isInteger(port) && port > 0 && port <= 65535)
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { timeout: 2000 },
+    )
+    for (const value of stdout.trim().split(/\s+/)) {
+      const port = Number(value)
+      if (Number.isInteger(port) && port > 0 && port <= 65535)
+        directPorts.add(port)
+    }
+  } catch {
+    // Keep direct evidence when descendant inspection is unavailable.
+  }
+  return [...directPorts]
 }
 
 function parsePortLines(stdout: string): number[] {

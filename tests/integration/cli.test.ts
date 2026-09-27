@@ -46,7 +46,24 @@ it('shows help without starting a tunnel', async () => {
 it('shows the package version', async () => {
   const result = await run(['--version'])
   expect(result.code).toBe(0)
-  expect(result.output).toContain('0.1.1')
+  expect(result.output).toContain('0.2.0')
+})
+
+it('keeps help and version machine-readable with --json', async () => {
+  const version = await run(['--json', '--version'])
+  expect(version.code).toBe(0)
+  expect(JSON.parse(version.output)).toMatchObject({
+    schemaVersion: 1,
+    type: 'version',
+    version: '0.2.0',
+  })
+  const help = await run(['--json', '--help'])
+  expect(help.code).toBe(0)
+  expect(JSON.parse(help.output)).toMatchObject({
+    schemaVersion: 1,
+    type: 'help',
+    text: expect.stringContaining('peek dev'),
+  })
 })
 
 it('supports the dev alias for help', async () => {
@@ -66,6 +83,26 @@ it('rejects an unsupported provider', async () => {
   const result = await run(['--provider', 'ngrok'])
   expect(result.code).not.toBe(0)
   expect(result.output).toContain('cloudflare')
+})
+
+it('rejects LAN mode for live doctor before starting a server', async () => {
+  const result = await run(['doctor', '--live', '--lan'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('peek doctor does not support --lan')
+})
+
+it('rejects preview options for a non-live doctor run', async () => {
+  const result = await run(['doctor', '--port', '3000'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('Preview options require peek doctor --live')
+})
+
+it('allows only localhost as an origin Host override', async () => {
+  const result = await run(['--host-header', 'example.com'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('--host-header only accepts localhost')
+  const accepted = await run(['--host-header', 'localhost', '--port', 'bad'])
+  expect(accepted.output).toContain('Invalid port')
 })
 
 it('rejects an empty explicit command', async () => {

@@ -1,6 +1,7 @@
 import { access, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PeekError } from '../utils/errors.js'
+import { detectFramework, type Framework } from './framework.js'
 
 export type PackageManager = 'pnpm' | 'npm' | 'yarn' | 'bun'
 
@@ -8,6 +9,7 @@ export interface Project {
   cwd: string
   packageManager: PackageManager
   devScript: string
+  framework: Framework
   name?: string
 }
 
@@ -113,7 +115,12 @@ export async function readProject(cwd: string): Promise<Project> {
     parsed.packageManager,
     present.filter((name): name is string => name !== undefined),
   )
-  const project: Project = { cwd, packageManager, devScript }
+  const project: Project = {
+    cwd,
+    packageManager,
+    devScript,
+    framework: detectFramework(parsed),
+  }
   if (typeof parsed.name === 'string') project.name = parsed.name
   return project
 }

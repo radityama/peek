@@ -10,12 +10,13 @@ const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 )
 
-function run(command, args) {
+function run(command, args, cwd, shell = process.platform === 'win32') {
   const result = spawnSync(command, args, {
+    cwd,
     encoding: 'utf8',
     timeout: 180_000,
     maxBuffer: 10_000_000,
-    shell: process.platform === 'win32',
+    shell,
   })
   if (result.error || result.status !== 0) {
     throw new Error(
@@ -44,6 +45,7 @@ try {
     join(temporary, tarballs[0]),
   ])
   const packageRoot = join(installDir, 'node_modules', '@radityprtama', 'peek')
+  await access(join(packageRoot, 'dist', 'config.d.ts'))
   const installedPackage = JSON.parse(
     await readFile(join(packageRoot, 'package.json'), 'utf8'),
   )
@@ -64,6 +66,19 @@ try {
   const help = run(bin, ['--help'])
   if (!help.includes('peek')) {
     throw new Error('Packed CLI did not display help')
+  }
+  const configExport = run(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      "import { defineConfig } from '@radityprtama/peek/config'; process.stdout.write(String(defineConfig({ port: 3000 }).port))",
+    ],
+    installDir,
+    false,
+  )
+  if (configExport !== '3000') {
+    throw new Error('Packed config export did not load')
   }
   process.stdout.write(`Packed CLI smoke test passed (${version}).\n`)
 } finally {

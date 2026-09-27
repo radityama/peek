@@ -1,6 +1,6 @@
 # Decisions
 
-These lightweight records explain choices made for v0.1. Revisit them when
+These lightweight records explain choices made across v0.1 and v0.2. Revisit them when
 evidence changes, while preserving the product and security invariants in
 `AGENTS.md`.
 
@@ -94,3 +94,24 @@ command may therefore exit with code 1, just like a dev server that crashed.
 `which-command` is the same small resolver Execa uses internally and handles
 Windows `PATHEXT`. The check runs only after a failed startup, so normal starts
 do not pay for it.
+
+## 10. Optional TypeScript configuration in v0.2
+
+**Decision:** A project may provide `peek.config.ts`, but a plain `peek` still
+works without it. Commands in config are argv arrays. Peek uses `jiti` to load
+the file, then validates every supported setting before startup.
+
+**Why:** Node 22.0 cannot execute TypeScript files natively, while Peek promises
+Node 22+ compatibility. `jiti` is a small, zero-dependency runtime package and
+is called only when a config file exists. The config is trusted local project
+code; Peek does not evaluate strings as shell commands.
+
+## 11. Reconnect without restarting the dev server
+
+**Decision:** A dropped Quick Tunnel triggers retries with capped, abortable backoff
+while the verified dev server stays alive. A new tunnel URL replaces the old
+one. Ctrl+C and a dev-server exit still stop the entire lifecycle.
+
+**Why:** Restarting a dev server can change its port and process tree. Keeping
+it alive preserves the selected service and makes temporary network failures
+recoverable without weakening port verification.

@@ -78,6 +78,7 @@ export class CloudflareProvider implements TunnelProvider {
     private readonly binaryPath: string,
     private readonly launch: TunnelLauncher = launchCloudflared,
     private readonly onDiagnostic?: (line: string) => void,
+    private readonly originHostHeader?: 'localhost',
   ) {}
 
   connect(options: {
@@ -86,11 +87,10 @@ export class CloudflareProvider implements TunnelProvider {
   }): Promise<TunnelConnection> {
     const { port, signal } = options
     signal.throwIfAborted()
-    const child = this.launch(this.binaryPath, [
-      'tunnel',
-      '--url',
-      `http://127.0.0.1:${port}`,
-    ])
+    this.diagnostics.length = 0
+    const args = ['tunnel', '--url', `http://127.0.0.1:${port}`]
+    if (this.originHostHeader) args.push('--http-host-header', 'localhost')
+    const child = this.launch(this.binaryPath, args)
     this.child = child
 
     return new Promise<TunnelConnection>((resolve, reject) => {
@@ -178,7 +178,7 @@ export class CloudflareProvider implements TunnelProvider {
     const output = this.diagnostics.join('\n')
     const configConflict = /config\.ya?ml/i.test(output)
     return new PeekError(
-      'TUNNEL_CONNECTION_ERROR',
+      configConflict ? 'TUNNEL_CONFIG_ERROR' : 'TUNNEL_CONNECTION_ERROR',
       `Cloudflare tunnel exited before a public URL was available (code ${result.exitCode ?? 'unknown'}).`,
       configConflict
         ? 'A ~/.cloudflared/config.yaml may block Quick Tunnels. Move it temporarily and retry.'
