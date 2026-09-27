@@ -11,13 +11,9 @@ if (process.argv.includes('hang')) {
 } else {
   let child
   if (process.argv.includes('tree')) {
-    child = spawn(
-      process.execPath,
-      ['-e', 'setInterval(() => {}, 1000)'],
-      {
-        stdio: 'ignore',
-      },
-    )
+    child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      stdio: 'ignore',
+    })
     console.log(`CHILD PID: ${child.pid}`)
   }
   const server = createServer((request, response) => {

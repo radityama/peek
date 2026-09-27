@@ -272,7 +272,9 @@ async function inspectWindows(rootPid: number): Promise<number[]> {
   )
   const directPorts = new Set<number>()
   for (const line of netstat.split('\n')) {
-    const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(line)
+    const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(
+      line,
+    )
     if (match?.[1] && Number(match[2]) === rootPid)
       directPorts.add(Number(match[1]))
   }
