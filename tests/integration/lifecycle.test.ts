@@ -102,6 +102,8 @@ it('reaches preview readiness while the registry request remains pending', async
     currentVersion: '0.2.0',
     cachePath: join(directory, 'update-check.json'),
     signal: lifecycle.signal,
+    // Keep this request pending through slower Windows preview startup.
+    timeoutMs: 10_000,
     requestLatest: () => {
       markRequestStarted()
       return new Promise<string>((resolve) => {
