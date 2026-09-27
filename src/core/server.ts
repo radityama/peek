@@ -265,6 +265,19 @@ async function inspectMac(rootPid: number): Promise<number[]> {
 }
 
 async function inspectWindows(rootPid: number): Promise<number[]> {
+  const { stdout: netstat } = await execFileAsync(
+    'netstat',
+    ['-ano', '-p', 'tcp'],
+    { timeout: 2000 },
+  )
+  const directPorts = new Set<number>()
+  for (const line of netstat.split('\n')) {
+    const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(line)
+    if (match?.[1] && Number(match[2]) === rootPid)
+      directPorts.add(Number(match[1]))
+  }
+  if (directPorts.size > 0) return [...directPorts]
+
   const script = `$ids = @(${rootPid}); $all = Get-CimInstance Win32_Process; do { $new = @($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId); $next = @($new | Where-Object { $ids -notcontains $_ }); $ids += $next } while ($next.Count -gt 0); Get-NetTCPConnection -State Listen | Where-Object { $ids -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalPort`
   const { stdout } = await execFileAsync(
     'powershell.exe',

@@ -9,8 +9,9 @@ if (process.argv.includes('crash')) {
 if (process.argv.includes('hang')) {
   setInterval(() => {}, 1000)
 } else {
+  let child
   if (process.argv.includes('tree')) {
-    const child = spawn(
+    child = spawn(
       process.execPath,
       ['-e', 'setInterval(() => {}, 1000)'],
       {
@@ -38,6 +39,16 @@ if (process.argv.includes('hang')) {
       console.log(`Local: http://localhost:${address.port}`)
     }
   })
-  process.on('SIGTERM', () => server.close(() => process.exit(0)))
-  process.on('SIGINT', () => server.close(() => process.exit(0)))
+  const stop = () => {
+    server.close(() => {
+      if (!child || child.exitCode !== null || child.signalCode !== null) {
+        process.exit(0)
+        return
+      }
+      child.once('exit', () => process.exit(0))
+      child.kill('SIGTERM')
+    })
+  }
+  process.on('SIGTERM', stop)
+  process.on('SIGINT', stop)
 }
