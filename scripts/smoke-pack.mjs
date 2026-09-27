@@ -10,8 +10,9 @@ const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 )
 
-function run(command, args) {
+function run(command, args, cwd) {
   const result = spawnSync(command, args, {
+    cwd,
     encoding: 'utf8',
     timeout: 180_000,
     maxBuffer: 10_000_000,
@@ -64,6 +65,18 @@ try {
   const help = run(bin, ['--help'])
   if (!help.includes('peek')) {
     throw new Error('Packed CLI did not display help')
+  }
+  const configExport = run(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      "import { defineConfig } from '@radityprtama/peek/config'; process.stdout.write(String(defineConfig({ port: 3000 }).port))",
+    ],
+    installDir,
+  )
+  if (configExport !== '3000') {
+    throw new Error('Packed config export did not load')
   }
   process.stdout.write(`Packed CLI smoke test passed (${version}).\n`)
 } finally {

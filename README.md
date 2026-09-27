@@ -60,17 +60,24 @@ it does not operate a relay or require a Peek account.
 | `peek --port 5173` | Use the specified server port after checking it was free before startup. |
 | `peek --qr` | Show a terminal QR code when the terminal can display it. |
 | `peek --no-qr` | Suppress the QR code. |
-| `peek --provider cloudflare` | Select the only v0.1 provider. |
+| `peek --provider cloudflare` | Select the Cloudflare provider. |
 | `peek --verbose` | Show Cloudflare diagnostics and error details. |
 | `peek -- npm start` | Run an explicit executable and arguments instead of a `dev` script. |
+| `peek --lan` | Share on the local network without a tunnel. |
+| `peek --json` | Emit newline-delimited JSON events for scripts and agents. |
+| `peek doctor` | Check the local setup, binary cache, network, and port inspection. |
+| `peek doctor --live` | Start a temporary preview and check its host and HMR behavior. |
 | `peek --help` / `peek --version` | Show help or version. |
 
 Flags go before `--`; tokens after it are passed as an executable and arguments
 without a shell. See [CLI details](https://github.com/radityprtama/peek/blob/main/docs/CLI.md) for precedence and examples.
 
+An optional `peek.config.ts` can set an argv-array command, port, provider, and
+QR preference. CLI flags take precedence.
+
 Peek supports pnpm, npm, Yarn, and Bun projects. Its managed tunnel binary
 supports Linux x64/ARM64, macOS x64/ARM64, and Windows x64. Linux and macOS
-are the primary v0.1 reliability targets. Silent servers on unusual ports may
+are the primary reliability targets. Silent servers on unusual ports may
 need `--port`.
 
 ## Security
@@ -117,9 +124,10 @@ reporting](https://github.com/radityprtama/peek/security/advisories/new).
 
 ## Roadmap and license
 
-v0.1 focuses on automatic server discovery, one temporary Cloudflare tunnel,
-QR output, and reliable cleanup. Additional providers and configuration are
-ideas for later releases, not commitments. See the
+v0.2 adds LAN sharing, tunnel reconnection, diagnostics, and optional project
+configuration to automatic server discovery, temporary Cloudflare tunnels,
+QR output, and coordinated cleanup. Additional providers are ideas for later
+releases, not commitments. See the
 [roadmap](https://github.com/radityprtama/peek/blob/main/docs/ROADMAP.md).
 
 Peek is released under the [MIT license](https://github.com/radityprtama/peek/blob/main/LICENSE). The downloaded

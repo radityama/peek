@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 
 if (process.argv.includes('crash')) {
@@ -8,6 +9,16 @@ if (process.argv.includes('crash')) {
 if (process.argv.includes('hang')) {
   setInterval(() => {}, 1000)
 } else {
+  if (process.argv.includes('tree')) {
+    const child = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    )
+    console.log(`CHILD PID: ${child.pid}`)
+  }
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/plain' })
     response.end('peek fixture ready')

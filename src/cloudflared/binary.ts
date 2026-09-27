@@ -31,6 +31,24 @@ export interface BinaryOptions {
   onDownload?: () => void
 }
 
+export async function inspectCachedCloudflared(
+  options: Pick<BinaryOptions, 'cacheDir' | 'platform' | 'arch'> = {},
+): Promise<'verified' | 'missing-or-invalid'> {
+  const platform = options.platform ?? process.platform
+  const arch = options.arch ?? process.arch
+  const asset = selectCloudflaredAsset(platform, arch)
+  const root = options.cacheDir ?? join(homedir(), '.peek', 'bin')
+  const suffix = platform === 'win32' ? '.exe' : ''
+  const path = join(
+    root,
+    `${platform}-${arch}`,
+    `cloudflared-${CLOUDFLARED_VERSION}${suffix}`,
+  )
+  return (await validCachedBinary(path, asset.binarySha256))
+    ? 'verified'
+    : 'missing-or-invalid'
+}
+
 export async function ensureCloudflared(
   options: BinaryOptions = {},
 ): Promise<string> {

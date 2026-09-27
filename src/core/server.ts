@@ -113,7 +113,8 @@ export async function waitForServer(
             'Check the dev server output and select its port with --port <number>.',
           )
         }
-        return selected
+        if (owned.includes(selected) || commonPorts.includes(selected))
+          return selected
       }
 
       // Once a dev process announces a port, a concurrent listener must not

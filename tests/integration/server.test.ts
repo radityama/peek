@@ -34,7 +34,7 @@ it('selects an output-derived port only when reachable', async () => {
     baselineOpen: new Set(),
     signal: new AbortController().signal,
     hasExited: () => false,
-    inspectPorts: async () => [],
+    inspectPorts: async () => [port],
     commonPorts: [],
     timeoutMs: 1000,
   })
@@ -92,4 +92,21 @@ it('rejects an announced port when the child owns a different listener', async (
       timeoutMs: 1000,
     }),
   ).rejects.toMatchObject({ code: 'SERVER_DETECTION_ERROR' })
+})
+
+it('does not accept an arbitrary announced port without ownership evidence', async () => {
+  const port = await listen()
+  const signals = new PortSignals()
+  signals.addChunk(`Local: http://localhost:${port}\n`)
+  await expect(
+    waitForServer({
+      signals,
+      baselineOpen: new Set(),
+      signal: new AbortController().signal,
+      hasExited: () => false,
+      inspectPorts: async () => [],
+      commonPorts: [],
+      timeoutMs: 350,
+    }),
+  ).rejects.toMatchObject({ code: 'SERVER_TIMEOUT' })
 })

@@ -70,6 +70,10 @@ npm with provenance using GitHub OIDC. The package name is
 not replace a published version. Confirm that the version in `package.json`
 matches the tag and is absent from the registry before pushing it.
 
+Peek v0.2 uses `jiti` as its only new runtime dependency because Node 22.0
+cannot load TypeScript configuration files by itself. The optional config file
+is the only path that calls the loader.
+
 Configure the npm trusted publisher for owner `radityprtama`, repository
 `peek`, workflow filename `release.yml`, environment `Publish to npm`, and
 **allow direct `npm publish`**. The environment must match the release job's

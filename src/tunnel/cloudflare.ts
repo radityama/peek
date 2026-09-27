@@ -86,6 +86,7 @@ export class CloudflareProvider implements TunnelProvider {
   }): Promise<TunnelConnection> {
     const { port, signal } = options
     signal.throwIfAborted()
+    this.diagnostics.length = 0
     const child = this.launch(this.binaryPath, [
       'tunnel',
       '--url',

@@ -40,6 +40,15 @@ export function probePort(
   signal?: AbortSignal,
   timeoutMs = 250,
 ): Promise<boolean> {
+  return probeHostPort('127.0.0.1', port, signal, timeoutMs)
+}
+
+export function probeHostPort(
+  host: string,
+  port: number,
+  signal?: AbortSignal,
+  timeoutMs = 250,
+): Promise<boolean> {
   signal?.throwIfAborted()
   return new Promise<boolean>((resolve, reject) => {
     const socket = new Socket()
@@ -59,7 +68,7 @@ export function probePort(
     socket.once('connect', () => finish(true))
     socket.once('timeout', () => finish(false))
     socket.once('error', () => finish(false))
-    socket.connect(port, '127.0.0.1')
+    socket.connect(port, host)
   })
 }
 
