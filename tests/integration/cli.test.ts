@@ -90,6 +90,12 @@ it('rejects LAN mode for live doctor before starting a server', async () => {
   expect(result.output).toContain('peek doctor does not support --lan')
 })
 
+it('rejects preview options for a non-live doctor run', async () => {
+  const result = await run(['doctor', '--port', '3000'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('Preview options require peek doctor --live')
+})
+
 it('allows only localhost as an origin Host override', async () => {
   const result = await run(['--host-header', 'example.com'])
   expect(result.code).toBe(2)

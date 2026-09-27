@@ -77,13 +77,7 @@ export async function checkPreview(
 
   if (signal.aborted) return findings
 
-  if (framework !== 'vite') {
-    findings.push({
-      kind: 'hmr-unverified',
-      message: 'HMR WebSocket endpoint is not known for this project.',
-    })
-    return findings
-  }
+  if (framework !== 'vite') return findings
   const local = await probeUpgrade(localUrl, signal)
   if (signal.aborted) return findings
   if (local !== true) {
@@ -164,6 +158,7 @@ export function probeWebSocketUpgrade(
       finish(true)
     })
     request.on('response', (response) => {
+      response.on('error', () => {})
       response.resume()
       finish(false)
     })

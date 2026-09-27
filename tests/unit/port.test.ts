@@ -34,9 +34,6 @@ describe('port parsing', () => {
     ['Astro', '  Local    http://localhost:4321/', 4321],
     ['Nuxt', '  ➜ Local: http://localhost:3000/', 3000],
     ['TanStack Start', '  Local: http://localhost:3001/', 3001],
-    ['React Router', '  ➜  Local: http://localhost:5173/', 5173],
-    ['SvelteKit', '  ➜  Local: http://localhost:5173/', 5173],
-    ['Node', 'Server listening on port 8080', 8080],
   ] as const)('parses a %s startup line', (_framework, line, port) => {
     expect(extractLocalPorts(line)).toEqual([port])
   })

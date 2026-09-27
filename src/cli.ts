@@ -118,6 +118,20 @@ async function execute(args: CliArgs): Promise<void> {
         'Run peek --lan to share a LAN preview, or peek doctor --live to check a tunnel.',
       )
     }
+    if (
+      isDoctor &&
+      !args.live &&
+      (args.port !== undefined ||
+        args.qr !== undefined ||
+        args.provider !== undefined ||
+        args['host-header'] !== undefined)
+    ) {
+      throw new PeekError(
+        'USAGE_ERROR',
+        'Preview options require peek doctor --live.',
+        'Remove the preview options or add --live.',
+      )
+    }
     if (args.provider !== undefined && args.provider !== 'cloudflare') {
       throw new PeekError(
         'USAGE_ERROR',
@@ -246,6 +260,7 @@ async function execute(args: CliArgs): Promise<void> {
           'reconnect-failed',
           `Tunnel reconnect attempt ${attempt} failed: ${message}`,
         ),
+      onTunnelDrop: (message) => output.warning('tunnel-dropped', message),
       ...(isDoctor
         ? { onPreviewCheckComplete: () => lifecycle.requestStop() }
         : {}),

@@ -206,6 +206,7 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
   lifecycles.push(lifecycle)
   const ready = vi.fn()
   const retryFailure = vi.fn()
+  const tunnelDrop = vi.fn()
   let resolveTwice: () => void = () => {}
   const twice = new Promise<void>((resolve) => {
     resolveTwice = resolve
@@ -222,10 +223,12 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
       if (ready.mock.calls.length === 2) resolveTwice()
     },
     onReconnectFailure: retryFailure,
+    onTunnelDrop: tunnelDrop,
   })
   await twice
   expect(ready).toHaveBeenCalledTimes(2)
   expect(retryFailure).toHaveBeenCalledTimes(1)
+  expect(tunnelDrop).toHaveBeenCalledWith('Tunnel exited with code 1.')
   expect(lifecycle.isStopped).toBe(false)
   lifecycle.requestStop()
   await expect(running).resolves.toBeUndefined()

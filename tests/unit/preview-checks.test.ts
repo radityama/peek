@@ -72,6 +72,24 @@ it('stops preview probes when cancelled during an HTTP retry', async () => {
   expect(upgradeCalls).toBe(0)
 })
 
+it('retries a transient public response and skips unknown HMR endpoints', async () => {
+  let requests = 0
+  const findings = await checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'node',
+    new AbortController().signal,
+    {
+      fetcher: async () => {
+        requests++
+        return new Response('ready', { status: requests === 1 ? 503 : 200 })
+      },
+    },
+  )
+  expect(requests).toBe(2)
+  expect(findings).toEqual([])
+})
+
 it('identifies a Vite blocked-host response without claiming unrelated 403s', () => {
   expect(
     classifyHostRejection(

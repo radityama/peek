@@ -45,6 +45,7 @@ try {
     join(temporary, tarballs[0]),
   ])
   const packageRoot = join(installDir, 'node_modules', '@radityprtama', 'peek')
+  await access(join(packageRoot, 'dist', 'config.d.ts'))
   const installedPackage = JSON.parse(
     await readFile(join(packageRoot, 'package.json'), 'utf8'),
   )

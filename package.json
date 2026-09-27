@@ -15,6 +15,7 @@
     "peek": "dist/cli.js"
   },
   "exports": {
+    "./package.json": "./package.json",
     "./config": {
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js",

@@ -19,7 +19,7 @@ if (process.argv.includes('hang')) {
   const server = createServer((request, response) => {
     if (
       process.argv.includes('host-block') &&
-      request.headers.host !== 'localhost'
+      request.headers.host?.split(':')[0] !== 'localhost'
     ) {
       response.writeHead(403, { 'content-type': 'text/plain' })
       response.end('Blocked request. This host is not allowed.')

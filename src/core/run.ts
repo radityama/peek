@@ -38,6 +38,7 @@ export interface RunOptions {
   onPreviewCheckComplete?: () => void
   previewCheck?: typeof checkPreview
   onReconnectFailure?: (attempt: number, message: string) => void
+  onTunnelDrop?: (message: string) => void
   retryDelaysMs?: readonly number[]
 }
 
@@ -219,7 +220,13 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (waited.kind === 'dev') throw serverExit(waited.exit)
         }
         signal.throwIfAborted()
-        await provider.disconnect()
+        const disconnected = await waitForOutcome(
+          provider.disconnect(),
+          dev.exit,
+          signal,
+        )
+        if (disconnected.kind === 'cancel') return
+        if (disconnected.kind === 'dev') throw serverExit(disconnected.exit)
         try {
           const connected = await waitForOutcome(
             provider.connect({ port, signal }),
@@ -249,6 +256,9 @@ export async function runPeek(options: RunOptions): Promise<void> {
       const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
       if (outcome.kind === 'cancel') return
       if (outcome.kind === 'dev') throw serverExit(outcome.exit)
+      options.onTunnelDrop?.(
+        `Tunnel exited with code ${outcome.value.exitCode ?? 'unknown'}.`,
+      )
       previewController?.abort()
       options.onState?.('reconnecting')
       retryCount++

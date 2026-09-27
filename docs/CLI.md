@@ -58,10 +58,8 @@ without `packageManager` fail with instructions to resolve the ambiguity.
 Port selection follows:
 
 ```text
---port
-  ↓
-config port
-  ↓
+--port or config port (if provided, verify this port or fail)
+  otherwise ↓
 unique local URL or port announced by the dev process
   ↓
 child-owned listening socket
@@ -100,8 +98,8 @@ TypeScript on the full Node 22+ range.
 `peek doctor` checks Node, the selected command, config, the cached binary's
 checksum, network access, and socket-inspection tools. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
-the server and tunnel. A failed HMR check warns; an unknown endpoint is
-reported as unverified.
+the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
+receive no status claim.
 
 When a framework rejects the random Quick Tunnel hostname, Peek prints a
 specific warning. Retry with `peek --host-header localhost`; this changes the
