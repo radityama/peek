@@ -10,13 +10,13 @@ const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 )
 
-function run(command, args, cwd) {
+function run(command, args, cwd, shell = process.platform === 'win32') {
   const result = spawnSync(command, args, {
     cwd,
     encoding: 'utf8',
     timeout: 180_000,
     maxBuffer: 10_000_000,
-    shell: process.platform === 'win32',
+    shell,
   })
   if (result.error || result.status !== 0) {
     throw new Error(
@@ -74,6 +74,7 @@ try {
       "import { defineConfig } from '@radityprtama/peek/config'; process.stdout.write(String(defineConfig({ port: 3000 }).port))",
     ],
     installDir,
+    false,
   )
   if (configExport !== '3000') {
     throw new Error('Packed config export did not load')
