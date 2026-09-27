@@ -10,6 +10,7 @@ import {
   selectExplicitCommand,
 } from './core/dev-command.js'
 import { runDoctor } from './core/doctor.js'
+import { readFramework } from './core/framework.js'
 import { Lifecycle } from './core/lifecycle.js'
 import { parsePort } from './core/port.js'
 import { readProject } from './core/project.js'
@@ -44,6 +45,10 @@ const flags = {
   lan: { type: 'boolean', description: 'Share on the local network only' },
   json: { type: 'boolean', description: 'Emit newline-delimited JSON events' },
   live: { type: 'boolean', description: 'Run live tunnel checks with doctor' },
+  'host-header': {
+    type: 'string',
+    description: 'Use localhost as the origin Host header',
+  },
 } as const
 
 interface CliArgs {
@@ -55,6 +60,7 @@ interface CliArgs {
   lan: boolean | undefined
   json: boolean | undefined
   live: boolean | undefined
+  'host-header': string | undefined
 }
 
 async function execute(args: CliArgs): Promise<void> {
@@ -73,6 +79,8 @@ async function execute(args: CliArgs): Promise<void> {
           'lan',
           'json',
           'live',
+          'hostHeader',
+          'host-header',
         ].includes(key),
     )
     if (unknownFlags.length > 0) {
@@ -117,6 +125,23 @@ async function execute(args: CliArgs): Promise<void> {
         'Remove --provider to use the local network only.',
       )
     }
+    if (
+      args['host-header'] !== undefined &&
+      args['host-header'] !== 'localhost'
+    ) {
+      throw new PeekError(
+        'USAGE_ERROR',
+        '--host-header only accepts localhost.',
+        'Use --host-header localhost for a dev server that rejects the tunnel hostname.',
+      )
+    }
+    if (args.lan && args['host-header'] !== undefined) {
+      throw new PeekError(
+        'USAGE_ERROR',
+        '--host-header requires a public tunnel.',
+        'Remove --host-header when using --lan.',
+      )
+    }
     if (args.port !== undefined && typeof args.port !== 'string') {
       throw new PeekError(
         'USAGE_ERROR',
@@ -151,6 +176,7 @@ async function execute(args: CliArgs): Promise<void> {
       project = await readProject(process.cwd())
       command = selectDevCommand(project.packageManager)
     }
+    const framework = project?.framework ?? (await readFramework(process.cwd()))
 
     if (!isDoctor) output.title()
     if (project) output.success(`${project.packageManager} project`)
@@ -166,6 +192,7 @@ async function execute(args: CliArgs): Promise<void> {
         binaryPath,
         undefined,
         args.verbose ? (line) => output.diagnostic(line) : undefined,
+        args['host-header'] === 'localhost' ? 'localhost' : undefined,
       )
     }
     await runPeek({
@@ -194,7 +221,7 @@ async function execute(args: CliArgs): Promise<void> {
       onServerReady: (port) => output.success(`Server ready on :${port}`),
       onReady: ({ localUrl, publicUrl }) => output.ready(localUrl, publicUrl),
       onLanReady: (url) => output.lanReady(url),
-      framework: project?.framework ?? 'node',
+      framework,
       onPreviewFinding: (finding) =>
         finding.kind === 'hmr-unverified'
           ? output.info(finding.message)

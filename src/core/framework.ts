@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 export type Framework =
   | 'next'
   | 'vite'
@@ -30,6 +33,19 @@ export function detectFramework(
     if (typeof dependencies[name] === 'string') return framework
   }
   return 'node'
+}
+
+export async function readFramework(cwd: string): Promise<Framework> {
+  try {
+    const parsed: unknown = JSON.parse(
+      await readFile(join(cwd, 'package.json'), 'utf8'),
+    )
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? detectFramework(parsed as Record<string, unknown>)
+      : 'node'
+  } catch {
+    return 'node'
+  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

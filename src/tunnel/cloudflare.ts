@@ -78,6 +78,7 @@ export class CloudflareProvider implements TunnelProvider {
     private readonly binaryPath: string,
     private readonly launch: TunnelLauncher = launchCloudflared,
     private readonly onDiagnostic?: (line: string) => void,
+    private readonly originHostHeader?: 'localhost',
   ) {}
 
   connect(options: {
@@ -87,11 +88,9 @@ export class CloudflareProvider implements TunnelProvider {
     const { port, signal } = options
     signal.throwIfAborted()
     this.diagnostics.length = 0
-    const child = this.launch(this.binaryPath, [
-      'tunnel',
-      '--url',
-      `http://127.0.0.1:${port}`,
-    ])
+    const args = ['tunnel', '--url', `http://127.0.0.1:${port}`]
+    if (this.originHostHeader) args.push('--http-host-header', 'localhost')
+    const child = this.launch(this.binaryPath, args)
     this.child = child
 
     return new Promise<TunnelConnection>((resolve, reject) => {

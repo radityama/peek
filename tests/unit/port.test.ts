@@ -28,6 +28,19 @@ describe('port parsing', () => {
     expect(extractLocalPorts(line)).toEqual(expected)
   })
 
+  it.each([
+    ['Next.js', '  - Local:        http://localhost:3000', 3000],
+    ['Vite', '  ➜  Local:   http://localhost:5173/', 5173],
+    ['Astro', '  Local    http://localhost:4321/', 4321],
+    ['Nuxt', '  ➜ Local: http://localhost:3000/', 3000],
+    ['TanStack Start', '  Local: http://localhost:3001/', 3001],
+    ['React Router', '  ➜  Local: http://localhost:5173/', 5173],
+    ['SvelteKit', '  ➜  Local: http://localhost:5173/', 5173],
+    ['Node', 'Server listening on port 8080', 8080],
+  ] as const)('parses a %s startup line', (_framework, line, port) => {
+    expect(extractLocalPorts(line)).toContain(port)
+  })
+
   it('rejects invalid explicit ports', () => {
     expect(parsePort('5173')).toBe(5173)
     for (const input of ['0', '65536', '-1', '3000abc', '1.5']) {

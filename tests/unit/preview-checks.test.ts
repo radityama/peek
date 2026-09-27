@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
 import {
+  checkPreview,
   classifyHostRejection,
   probeWebSocketUpgrade,
 } from '../../src/core/preview-checks.js'
@@ -15,6 +16,40 @@ afterEach(async () => {
           new Promise<void>((resolve) => server.close(() => resolve())),
       ),
   )
+})
+
+it('reports blocked host and a failed public HMR upgrade', async () => {
+  const findings = await checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'vite',
+    new AbortController().signal,
+    {
+      fetcher: async () =>
+        new Response('Blocked request. This host is not allowed.', {
+          status: 403,
+        }),
+      probeUpgrade: async (url) => url.startsWith('http:'),
+    },
+  )
+  expect(findings.map((finding) => finding.kind)).toEqual([
+    'blocked-host',
+    'hmr-failed',
+  ])
+})
+
+it('does not claim HMR failed when the public probe cannot connect', async () => {
+  const findings = await checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'vite',
+    new AbortController().signal,
+    {
+      fetcher: async () => new Response('ok'),
+      probeUpgrade: async (url) => (url.startsWith('http:') ? true : undefined),
+    },
+  )
+  expect(findings.map((finding) => finding.kind)).toEqual(['hmr-unverified'])
 })
 
 it('identifies a Vite blocked-host response without claiming unrelated 403s', () => {

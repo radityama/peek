@@ -19,7 +19,15 @@ if (process.argv.includes('hang')) {
     )
     console.log(`CHILD PID: ${child.pid}`)
   }
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    if (
+      process.argv.includes('host-block') &&
+      request.headers.host !== 'localhost'
+    ) {
+      response.writeHead(403, { 'content-type': 'text/plain' })
+      response.end('Blocked request. This host is not allowed.')
+      return
+    }
     response.writeHead(200, { 'content-type': 'text/plain' })
     response.end('peek fixture ready')
   })

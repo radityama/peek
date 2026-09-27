@@ -64,6 +64,32 @@ it('waits for a valid public URL on stderr', async () => {
   await expect(connection.exited).resolves.toEqual({ exitCode: 0 })
 })
 
+it('passes an explicit localhost Host header to cloudflared', async () => {
+  const fake = fakeChild()
+  const launch = vi.fn(() => fake.child)
+  const provider = new CloudflareProvider(
+    '/tmp/cloudflared',
+    launch,
+    undefined,
+    'localhost',
+  )
+  const connecting = provider.connect({
+    port: 3000,
+    signal: new AbortController().signal,
+  })
+  fake.stderr.write('https://rapid-river.trycloudflare.com\n')
+  await connecting
+  expect(launch).toHaveBeenCalledWith('/tmp/cloudflared', [
+    'tunnel',
+    '--url',
+    'http://127.0.0.1:3000',
+    '--http-host-header',
+    'localhost',
+  ])
+  fake.exit(0)
+  await provider.disconnect()
+})
+
 it('reports an early tunnel exit', async () => {
   const fake = fakeChild()
   const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)

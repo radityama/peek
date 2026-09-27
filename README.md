@@ -62,6 +62,7 @@ it does not operate a relay or require a Peek account.
 | `peek --no-qr` | Suppress the QR code. |
 | `peek --provider cloudflare` | Select the Cloudflare provider. |
 | `peek --verbose` | Show Cloudflare diagnostics and error details. |
+| `peek --host-header localhost` | Fix a dev server that rejects the temporary tunnel hostname. |
 | `peek -- npm start` | Run an explicit executable and arguments instead of a `dev` script. |
 | `peek --lan` | Share on the local network without a tunnel. |
 | `peek --json` | Emit newline-delimited JSON events for scripts and agents. |

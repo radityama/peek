@@ -84,6 +84,14 @@ it('rejects an unsupported provider', async () => {
   expect(result.output).toContain('cloudflare')
 })
 
+it('allows only localhost as an origin Host override', async () => {
+  const result = await run(['--host-header', 'example.com'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('--host-header only accepts localhost')
+  const accepted = await run(['--host-header', 'localhost', '--port', 'bad'])
+  expect(accepted.output).toContain('Invalid port')
+})
+
 it('rejects an empty explicit command', async () => {
   const result = await run(['--'])
   expect(result.code).toBe(2)

@@ -1,11 +1,17 @@
 import { randomBytes } from 'node:crypto'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Framework } from './framework.js'
 
 export interface PreviewFinding {
   kind: 'blocked-host' | 'hmr-failed' | 'hmr-unverified'
   message: string
+}
+
+export interface PreviewCheckDependencies {
+  fetcher?: typeof fetch
+  probeUpgrade?: typeof probeWebSocketUpgrade
 }
 
 export function classifyHostRejection(
@@ -22,7 +28,7 @@ export function classifyHostRejection(
       framework === 'sveltekit' ||
       framework === 'react-router' ||
       framework === 'tanstack-start'
-        ? `Vite rejected ${hostname}. Add this hostname to server.allowedHosts in your Vite config, then use a stable tunnel hostname; Quick Tunnel names change on restart.`
+        ? `Vite rejected ${hostname}. Add --host-header localhost before any -- command separator, then retry.`
         : `The dev server rejected ${hostname}. Add this hostname to its trusted-host configuration.`
     return { kind: 'blocked-host', message: remedy }
   }
@@ -34,23 +40,35 @@ export async function checkPreview(
   publicUrl: string,
   framework: Framework,
   signal: AbortSignal,
+  dependencies: PreviewCheckDependencies = {},
 ): Promise<PreviewFinding[]> {
   const findings: PreviewFinding[] = []
-  try {
-    const response = await fetch(publicUrl, {
-      signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
-      redirect: 'manual',
-    })
-    const body = await readPrefix(response, 8_192)
-    const rejection = classifyHostRejection(
-      response.status,
-      body,
-      framework,
-      new URL(publicUrl).hostname,
-    )
-    if (rejection) findings.push(rejection)
-  } catch {
-    if (signal.aborted) return findings
+  const fetcher = dependencies.fetcher ?? fetch
+  const probeUpgrade = dependencies.probeUpgrade ?? probeWebSocketUpgrade
+  for (let attempt = 0; attempt < 3 && !signal.aborted; attempt++) {
+    try {
+      const response = await fetcher(publicUrl, {
+        signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
+        redirect: 'manual',
+      })
+      if (response.status >= 500) {
+        await response.body?.cancel().catch(() => {})
+        if (attempt < 2) await delay(1_000, undefined, { signal })
+        continue
+      }
+      const body = await readPrefix(response, 8_192)
+      const rejection = classifyHostRejection(
+        response.status,
+        body,
+        framework,
+        new URL(publicUrl).hostname,
+      )
+      if (rejection) findings.push(rejection)
+      break
+    } catch {
+      if (signal.aborted) return findings
+      if (attempt < 2) await delay(1_000, undefined, { signal }).catch(() => {})
+    }
   }
 
   if (framework !== 'vite') {
@@ -60,7 +78,7 @@ export async function checkPreview(
     })
     return findings
   }
-  const local = await probeWebSocketUpgrade(localUrl, signal)
+  const local = await probeUpgrade(localUrl, signal)
   if (local !== true) {
     findings.push({
       kind: 'hmr-unverified',
@@ -68,12 +86,17 @@ export async function checkPreview(
     })
     return findings
   }
-  const remote = await probeWebSocketUpgrade(publicUrl, signal)
-  if (remote !== true) {
+  const remote = await probeUpgrade(publicUrl, signal)
+  if (remote === false) {
     findings.push({
       kind: 'hmr-failed',
       message:
         'Vite HMR works locally but its WebSocket upgrade failed through the tunnel. Check server.ws settings and proxy WebSocket support.',
+    })
+  } else if (remote === undefined) {
+    findings.push({
+      kind: 'hmr-unverified',
+      message: 'Public HMR upgrade could not be checked yet.',
     })
   }
   return findings

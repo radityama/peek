@@ -5,7 +5,8 @@
 - Recognize common Node development frameworks and require evidence before
   selecting an announced port outside the common-port set.
 - Reconnect dropped Quick Tunnels while keeping the dev server running.
-- Diagnose blocked tunnel hostnames and check Vite HMR WebSocket upgrades.
+- Diagnose blocked tunnel hostnames, offer `--host-header localhost` as a
+  working remedy, and check Vite HMR WebSocket upgrades.
 - Add LAN previews, newline-delimited JSON events, and `peek doctor` with
   optional live checks.
 - Support optional `peek.config.ts` with an argv-array command and validated

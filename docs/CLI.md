@@ -23,6 +23,7 @@ a shell.
 | `--lan` | Show a LAN URL and QR without starting or downloading a tunnel. The dev server must listen on the LAN address. |
 | `--json` | Write versioned, newline-delimited JSON events, including child output. No QR or human-readable decoration. |
 | `--live` | With `peek doctor`, start a temporary tunnel and run preview checks. |
+| `--host-header localhost` | Ask `cloudflared` to send `Host: localhost` to the dev server when it rejects the temporary hostname. |
 
 Without `--qr` or `--no-qr`, Peek shows a QR code when terminal size permits.
 The HTTPS URL always appears as text. `--qr` cannot force an unusable QR into
@@ -43,6 +44,7 @@ peek -- npm start
 peek --port 3000 -- node server.js
 peek --lan -- node server.js
 peek --json
+peek --host-header localhost
 peek doctor
 peek doctor --live
 ```
@@ -100,3 +102,8 @@ checksum, network access, and socket-inspection tools. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; an unknown endpoint is
 reported as unverified.
+
+When a framework rejects the random Quick Tunnel hostname, Peek prints a
+specific warning. Retry with `peek --host-header localhost`; this changes the
+Host header received by the dev server and may affect apps that build absolute
+URLs from that header. Peek accepts only `localhost` as the override.
