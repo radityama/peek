@@ -46,7 +46,7 @@ it('shows help without starting a tunnel', async () => {
 it('shows the package version', async () => {
   const result = await run(['--version'])
   expect(result.code).toBe(0)
-  expect(result.output).toContain('0.2.0')
+  expect(result.output).toContain('0.2.1')
 })
 
 it('keeps help and version machine-readable with --json', async () => {
@@ -55,7 +55,7 @@ it('keeps help and version machine-readable with --json', async () => {
   expect(JSON.parse(version.output)).toMatchObject({
     schemaVersion: 1,
     type: 'version',
-    version: '0.2.0',
+    version: '0.2.1',
   })
   const help = await run(['--json', '--help'])
   expect(help.code).toBe(0)

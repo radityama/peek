@@ -51,6 +51,14 @@ Press Ctrl+C to stop
 The public URL changes each run. Peek uses Cloudflare's Quick Tunnel service;
 it does not operate a relay or require a Peek account.
 
+When a newer Peek version is available, interactive previews show an update
+notice after the preview URL is ready. The check runs in the background and
+never installs anything. Successful and failed checks are cached for 24 hours
+under `~/.peek`. Run `npm install --global @radityprtama/peek@latest` to update,
+or set `NO_UPDATE_NOTIFIER=1` to disable checks. Peek skips checks in `--json`
+mode, CI, and test environments. The registry request contains no project or
+preview information.
+
 ## Commands
 
 | Command | Purpose |

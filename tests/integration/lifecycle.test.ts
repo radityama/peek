@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -7,6 +10,8 @@ import {
   CloudflareProvider,
   type TunnelChild,
 } from '../../src/tunnel/cloudflare.js'
+import { checkForUpdate } from '../../src/update/check.js'
+import { createUpdateNotice } from '../../src/update/notice.js'
 
 const serverFile = fileURLToPath(
   new URL('../fixtures/fake-server/server.mjs', import.meta.url),
@@ -80,6 +85,58 @@ it('starts a fake server and tunnel and cleans both on cancellation', async () =
   expect(devPid).toBeTypeOf('number')
   expect(isRunning(devPid ?? 0)).toBe(false)
   expect(isRunning(tunnelPids.at(-1) ?? 0)).toBe(false)
+})
+
+it('reaches preview readiness while the registry request remains pending', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'peek-update-startup-'))
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const show = vi.fn()
+  const notice = createUpdateNotice(show)
+  let completeRequest: (version: string) => void = () => {}
+  let markRequestStarted: () => void = () => {}
+  const requestStarted = new Promise<void>((resolve) => {
+    markRequestStarted = resolve
+  })
+  const checking = checkForUpdate({
+    currentVersion: '0.2.0',
+    cachePath: join(directory, 'update-check.json'),
+    signal: lifecycle.signal,
+    requestLatest: () => {
+      markRequestStarted()
+      return new Promise<string>((resolve) => {
+        completeRequest = resolve
+      })
+    },
+  })
+  void checking.then((update) => notice.receive(update))
+  let markReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(),
+    onReady: () => {
+      notice.ready()
+      markReady()
+    },
+  })
+  try {
+    await Promise.all([requestStarted, ready])
+    expect(show).not.toHaveBeenCalled()
+    completeRequest('0.2.1')
+    await checking
+    expect(show).toHaveBeenCalledOnce()
+    expect(show).toHaveBeenCalledWith({ current: '0.2.0', latest: '0.2.1' })
+  } finally {
+    notice.stop()
+    lifecycle.requestStop()
+    await running
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 it('does not connect a tunnel when the dev server crashes', async () => {
