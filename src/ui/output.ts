@@ -90,7 +90,8 @@ export class TerminalOutput implements Output {
       ? `${check.message} ${check.remedy}`
       : check.message
     if (check.status === 'pass') this.success(`${check.name}: ${detail}`)
-    else if (check.status === 'warn') this.info(`${check.name}: ${detail}`)
+    else if (check.status === 'warn')
+      this.warning('doctor', `${check.name}: ${detail}`)
     else this.error(`${check.name}: ${detail}`)
   }
 }

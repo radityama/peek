@@ -37,14 +37,17 @@ export function validateConfig(value: unknown): PeekConfig {
   if (unknown) throw invalidConfig(`Unknown option ${JSON.stringify(unknown)}.`)
   const config: PeekConfig = {}
   if (input.command !== undefined) {
+    const command = input.command
     if (
-      !Array.isArray(input.command) ||
-      input.command.length === 0 ||
-      input.command.some((arg) => typeof arg !== 'string' || arg.length === 0)
+      !Array.isArray(command) ||
+      command.length === 0 ||
+      Array.from({ length: command.length }, (_, index) => command[index]).some(
+        (arg) => typeof arg !== 'string' || arg.length === 0,
+      )
     ) {
       throw invalidConfig('command must be a nonempty array of string tokens.')
     }
-    config.command = input.command as string[]
+    config.command = command as string[]
   }
   if (input.port !== undefined) {
     if (

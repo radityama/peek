@@ -68,8 +68,11 @@ export async function checkPreview(
     } catch {
       if (signal.aborted) return findings
       if (attempt < 2) await delay(1_000, undefined, { signal }).catch(() => {})
+      if (signal.aborted) return findings
     }
   }
+
+  if (signal.aborted) return findings
 
   if (framework !== 'vite') {
     findings.push({
@@ -79,6 +82,7 @@ export async function checkPreview(
     return findings
   }
   const local = await probeUpgrade(localUrl, signal)
+  if (signal.aborted) return findings
   if (local !== true) {
     findings.push({
       kind: 'hmr-unverified',
@@ -87,6 +91,7 @@ export async function checkPreview(
     return findings
   }
   const remote = await probeUpgrade(publicUrl, signal)
+  if (signal.aborted) return findings
   if (remote === false) {
     findings.push({
       kind: 'hmr-failed',

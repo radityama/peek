@@ -84,6 +84,12 @@ it('rejects an unsupported provider', async () => {
   expect(result.output).toContain('cloudflare')
 })
 
+it('rejects LAN mode for live doctor before starting a server', async () => {
+  const result = await run(['doctor', '--live', '--lan'])
+  expect(result.code).toBe(2)
+  expect(result.output).toContain('peek doctor does not support --lan')
+})
+
 it('allows only localhost as an origin Host override', async () => {
   const result = await run(['--host-header', 'example.com'])
   expect(result.code).toBe(2)

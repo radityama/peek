@@ -205,6 +205,8 @@ export async function runPeek(options: RunOptions): Promise<void> {
     const delays = options.retryDelaysMs?.length
       ? options.retryDelaysMs
       : DEFAULT_RETRY_DELAYS
+    let retryCount = 0
+    let failureCount = 0
     while (true) {
       const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
       if (outcome.kind === 'cancel') return
@@ -212,9 +214,10 @@ export async function runPeek(options: RunOptions): Promise<void> {
 
       previewController?.abort()
       options.onState?.('reconnecting')
-      let attempt = 0
+      retryCount++
       while (true) {
-        const waitMs = delays[Math.min(attempt, delays.length - 1)] ?? 30_000
+        const waitMs =
+          delays[Math.min(retryCount - 1, delays.length - 1)] ?? 30_000
         const waited = await waitForOutcome(
           delay(waitMs, undefined, { signal }).catch(() => undefined),
           dev.exit,
@@ -239,9 +242,10 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (error instanceof PeekError && error.code === 'SERVER_START_ERROR')
             throw error
           signal.throwIfAborted()
-          attempt++
+          retryCount++
+          failureCount++
           options.onReconnectFailure?.(
-            attempt,
+            failureCount,
             error instanceof Error ? error.message : String(error),
           )
         }

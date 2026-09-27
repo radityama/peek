@@ -129,8 +129,10 @@ export async function runDoctor(
   }
 
   try {
-    if (process.platform === 'linux') await access('/proc/net/tcp')
-    else if (process.platform === 'darwin' && !(await whichCommand('lsof')))
+    if (process.platform === 'linux') {
+      await access('/proc/net/tcp')
+      await access('/proc/net/tcp6')
+    } else if (process.platform === 'darwin' && !(await whichCommand('lsof')))
       throw new Error('lsof is unavailable')
     else if (
       process.platform === 'win32' &&

@@ -14,14 +14,13 @@ it('keeps only private external IPv4 addresses', () => {
   expect(result).toEqual(['192.168.1.4', '172.17.0.1'])
 })
 
-it('uses the network route when several private interfaces are reachable', async () => {
-  expect(
-    await selectLanAddress(
+it('rejects ambiguous usable private interfaces', async () => {
+  await expect(
+    selectLanAddress(
       3000,
       new AbortController().signal,
       ['172.17.0.1', '192.168.1.4'],
       async () => true,
-      '192.168.1.4',
     ),
-  ).toBe('192.168.1.4')
+  ).rejects.toThrow('multiple usable LAN addresses')
 })

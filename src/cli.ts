@@ -111,6 +111,13 @@ async function execute(args: CliArgs): Promise<void> {
         'Run peek doctor from a project directory.',
       )
     }
+    if (isDoctor && args.lan) {
+      throw new PeekError(
+        'USAGE_ERROR',
+        'peek doctor does not support --lan.',
+        'Run peek --lan to share a LAN preview, or peek doctor --live to check a tunnel.',
+      )
+    }
     if (args.provider !== undefined && args.provider !== 'cloudflare') {
       throw new PeekError(
         'USAGE_ERROR',

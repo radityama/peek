@@ -52,6 +52,29 @@ it('does not claim HMR failed when the public probe cannot connect', async () =>
   expect(findings.map((finding) => finding.kind)).toEqual(['hmr-unverified'])
 })
 
+it('stops preview probes when cancelled during an HTTP retry', async () => {
+  const controller = new AbortController()
+  let upgradeCalls = 0
+  const checking = checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'vite',
+    controller.signal,
+    {
+      fetcher: async () => {
+        throw new Error('Temporary network failure')
+      },
+      probeUpgrade: async () => {
+        upgradeCalls++
+        return true
+      },
+    },
+  )
+  setTimeout(() => controller.abort(), 10)
+  expect(await checking).toEqual([])
+  expect(upgradeCalls).toBe(0)
+})
+
 it('identifies a Vite blocked-host response without claiming unrelated 403s', () => {
   expect(
     classifyHostRejection(

@@ -25,6 +25,11 @@ it('accepts argv config and rejects shell command strings', () => {
     'command must be a nonempty array',
   )
   expect(() => validateConfig({ unexpected: true })).toThrow('Unknown option')
+  const sparseCommand = ['bun']
+  sparseCommand[2] = 'dev'
+  expect(() => validateConfig({ command: sparseCommand })).toThrow(
+    'command must be a nonempty array',
+  )
 })
 
 it('loads TypeScript from the project root', async () => {
