@@ -39,6 +39,7 @@ flowchart TD
 | `src/cloudflared/*` | Fixed release mapping, download, checksum, and cache. |
 | `src/tunnel/*` | Small provider contract and Cloudflare implementation. |
 | `src/ui/*` | Human and JSON event output and terminal-size-aware QR rendering. |
+| `src/update/*` | Best-effort npm version check, user-level 24-hour cache, and notification timing; no dependency from the preview core. |
 | `src/utils/errors.ts` | Actionable error categories and formatting. |
 
 ## Execution lifecycle
@@ -60,6 +61,12 @@ flowchart TD
 6. If the dev server exits or the user sends SIGINT/SIGTERM, stop the tunnel
    first and then the dev process tree. Force termination after a short grace
    period.
+
+An eligible interactive preview starts the update checker after command
+validation without awaiting it. A successful result is held until the first
+preview URL is visible, then shown at most once. JSON, doctor, CI, and test
+modes skip the check. The checker only requests the published npm version and
+cannot change preview lifecycle or exit status.
 
 ```mermaid
 sequenceDiagram

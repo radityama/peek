@@ -81,6 +81,13 @@ export class TerminalOutput implements Output {
     process.stdout.write('\nPress Ctrl+C to stop\n')
   }
 
+  updateAvailable(current: string, latest: string): void {
+    process.stdout.write(
+      `\n${pc.bold(pc.yellow(`Update available ${current} → ${latest}`))}\n` +
+        'Run npm install --global @radityprtama/peek@latest\n',
+    )
+  }
+
   error(message: string): void {
     logger.error(message)
   }

@@ -19,6 +19,9 @@ import { CloudflareProvider } from './tunnel/cloudflare.js'
 import { JsonOutput } from './ui/json-output.js'
 import { TerminalOutput } from './ui/output.js'
 import type { QrMode } from './ui/qr.js'
+import { checkForUpdate } from './update/check.js'
+import { shouldCheckForUpdates } from './update/eligibility.js'
+import { createUpdateNotice } from './update/notice.js'
 import { formatError, PeekError } from './utils/errors.js'
 
 const raw = process.argv.slice(2)
@@ -66,6 +69,11 @@ interface CliArgs {
 async function execute(args: CliArgs): Promise<void> {
   let output = args.json ? new JsonOutput() : new TerminalOutput('auto')
   const lifecycle = new Lifecycle()
+  const updateController = new AbortController()
+  const updateNotice = createUpdateNotice(({ current, latest }) => {
+    if (output instanceof TerminalOutput)
+      output.updateAvailable(current, latest)
+  })
   lifecycle.installSignals()
   try {
     const unknownFlags = Object.keys(args).filter(
@@ -207,6 +215,23 @@ async function execute(args: CliArgs): Promise<void> {
     }
     const framework = project?.framework ?? (await readFramework(process.cwd()))
 
+    if (
+      shouldCheckForUpdates({
+        isDoctor,
+        json: args.json === true,
+        env: process.env,
+      })
+    ) {
+      void checkForUpdate({
+        currentVersion: packageJson.version,
+        signal: AbortSignal.any([lifecycle.signal, updateController.signal]),
+      })
+        .then((result) => {
+          if (!lifecycle.signal.aborted) updateNotice.receive(result)
+        })
+        .catch(() => {})
+    }
+
     if (!isDoctor) output.title()
     if (project) output.success(`${project.packageManager} project`)
     let provider: CloudflareProvider | undefined
@@ -248,8 +273,14 @@ async function execute(args: CliArgs): Promise<void> {
       },
       onDevOutput: (stream, text) => output.childOutput(stream, text),
       onServerReady: (port) => output.success(`Server ready on :${port}`),
-      onReady: ({ localUrl, publicUrl }) => output.ready(localUrl, publicUrl),
-      onLanReady: (url) => output.lanReady(url),
+      onReady: ({ localUrl, publicUrl }) => {
+        output.ready(localUrl, publicUrl)
+        updateNotice.ready()
+      },
+      onLanReady: (url) => {
+        output.lanReady(url)
+        updateNotice.ready()
+      },
       framework,
       onPreviewFinding: (finding) =>
         finding.kind === 'hmr-unverified'
@@ -276,6 +307,8 @@ async function execute(args: CliArgs): Promise<void> {
         error instanceof PeekError && error.code === 'USAGE_ERROR' ? 2 : 1
     }
   } finally {
+    updateNotice.stop()
+    updateController.abort()
     await lifecycle.stop()
   }
 }

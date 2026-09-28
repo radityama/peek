@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-09-28
+
+- Notify interactive preview users when a newer Peek version is published.
+  Checks run independently of preview startup and never install updates.
+- Cache successful and failed checks for 24 hours. Skip checks in JSON mode,
+  CI, tests, and when `NO_UPDATE_NOTIFIER=1`.
+
 ## 0.2.0 — 2026-09-27
 
 - Recognize common Node development frameworks and require evidence before
