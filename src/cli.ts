@@ -69,6 +69,7 @@ interface CliArgs {
 async function execute(args: CliArgs): Promise<void> {
   let output = args.json ? new JsonOutput() : new TerminalOutput('auto')
   const lifecycle = new Lifecycle()
+  const updateController = new AbortController()
   const updateNotice = createUpdateNotice(({ current, latest }) => {
     if (output instanceof TerminalOutput)
       output.updateAvailable(current, latest)
@@ -223,7 +224,7 @@ async function execute(args: CliArgs): Promise<void> {
     ) {
       void checkForUpdate({
         currentVersion: packageJson.version,
-        signal: lifecycle.signal,
+        signal: AbortSignal.any([lifecycle.signal, updateController.signal]),
       })
         .then((result) => {
           if (!lifecycle.signal.aborted) updateNotice.receive(result)
@@ -307,6 +308,7 @@ async function execute(args: CliArgs): Promise<void> {
     }
   } finally {
     updateNotice.stop()
+    updateController.abort()
     await lifecycle.stop()
   }
 }

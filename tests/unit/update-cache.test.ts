@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
@@ -49,4 +49,19 @@ it('allows only one claimant at a time', async () => {
   const secondRelease = await claimCheck(path)
   expect(secondRelease).toBeTypeOf('function')
   await secondRelease?.()
+})
+
+it('recovers a stale lock without letting its former owner release the replacement', async () => {
+  const oldRelease = await claimCheck(path)
+  expect(oldRelease).toBeTypeOf('function')
+  const old = new Date(Date.now() - 20_000)
+  await utimes(`${path}.lock`, old, old)
+  const newRelease = await claimCheck(path)
+  expect(newRelease).toBeTypeOf('function')
+  await oldRelease?.()
+  expect(await claimCheck(path)).toBeUndefined()
+  await newRelease?.()
+  const finalRelease = await claimCheck(path)
+  expect(finalRelease).toBeTypeOf('function')
+  await finalRelease?.()
 })

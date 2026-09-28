@@ -73,9 +73,20 @@ export async function claimCheck(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const handle = await open(lockPath, 'wx', 0o600)
-      await handle.close()
+      const token = randomUUID()
+      try {
+        await handle.writeFile(token)
+      } finally {
+        await handle.close()
+      }
       return async () => {
-        await rm(lockPath, { force: true })
+        try {
+          // A stale lock can be replaced; only its current owner may remove it.
+          if ((await readFile(lockPath, 'utf8')) === token)
+            await rm(lockPath, { force: true })
+        } catch {
+          // A missing or unreadable lock needs no cleanup from this claimant.
+        }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error

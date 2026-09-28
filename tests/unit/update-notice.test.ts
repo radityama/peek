@@ -34,10 +34,20 @@ it('does not show an update after shutdown', () => {
   expect(show).not.toHaveBeenCalled()
 })
 
+it('stays silent when no newer version is available', () => {
+  const show = vi.fn()
+  const notice = createUpdateNotice(show)
+  notice.ready()
+  notice.receive(undefined)
+  expect(show).not.toHaveBeenCalled()
+})
+
 it.each([
   { isDoctor: true, json: false, env: {} },
   { isDoctor: false, json: true, env: {} },
   { isDoctor: false, json: false, env: { CI: 'true' } },
+  { isDoctor: false, json: false, env: { CI: '1' } },
+  { isDoctor: false, json: false, env: { CI: 'True' } },
   { isDoctor: false, json: false, env: { NODE_ENV: 'test' } },
   { isDoctor: false, json: false, env: { NO_UPDATE_NOTIFIER: '1' } },
 ])('skips checking for disabled modes: %j', (options) => {

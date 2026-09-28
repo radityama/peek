@@ -111,6 +111,7 @@ describe('update check', () => {
     }
     const first = checkForUpdate(options)
     await started
+    await rm(cachePath)
     const second = checkForUpdate(options)
     expect(await second).toBeUndefined()
     complete('0.2.1')

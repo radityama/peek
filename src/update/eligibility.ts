@@ -12,7 +12,7 @@ export function shouldCheckForUpdates(options: {
   return (
     !options.isDoctor &&
     !options.json &&
-    options.env.CI !== 'true' &&
+    !options.env.CI &&
     options.env.NODE_ENV !== 'test' &&
     options.env.NO_UPDATE_NOTIFIER !== '1'
   )
