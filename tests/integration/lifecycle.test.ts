@@ -141,6 +141,46 @@ it('reaches preview readiness while the registry request remains pending', async
   }
 })
 
+it('holds an update result until the preview URL is ready', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'peek-update-before-ready-'))
+  const update = await checkForUpdate({
+    currentVersion: '0.2.0',
+    cachePath: join(directory, 'update-check.json'),
+    requestLatest: async () => '0.2.1',
+  })
+  const show = vi.fn()
+  const notice = createUpdateNotice(show)
+  notice.receive(update)
+  expect(show).not.toHaveBeenCalled()
+
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  let markReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(),
+    onReady: () => {
+      notice.ready()
+      markReady()
+    },
+  })
+  try {
+    await ready
+    expect(show).toHaveBeenCalledOnce()
+    expect(show).toHaveBeenCalledWith({ current: '0.2.0', latest: '0.2.1' })
+  } finally {
+    notice.stop()
+    lifecycle.requestStop()
+    await running
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 it('does not connect a tunnel when the dev server crashes', async () => {
   const lifecycle = new Lifecycle()
   lifecycles.push(lifecycle)
