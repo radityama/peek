@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 — 2026-09-29
+
+- Publish Peek under the canonical npm package `@usepeek/peek` while keeping
+  `peek` as the executable. The final `@radityprtama/peek@0.2.2` release shows
+  an interactive migration notice.
+- Expand `peek doctor` with Peek and cloudflared versions, platform and
+  architecture, and project/package-manager detection.
+- Repair execute permission on a verified cached cloudflared binary without
+  downloading it again.
+
 ## 0.2.1 — 2026-09-28
 
 - Notify interactive preview users when a newer Peek version is published.

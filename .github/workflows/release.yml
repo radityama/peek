@@ -24,8 +24,9 @@ jobs:
       # registry-url creates an empty NODE_AUTH_TOKEN entry that can mask OIDC.
       - run: npm install --global npm@11.19.0
       - run: npm --version
-      - name: Verify tag matches package version
-        run: node -e "if (process.env.GITHUB_REF_NAME !== 'v' + require('./package.json').version) process.exit(1)"
+      - name: Verify tag and package identity
+        run: |
+          node -e "const p = require('./package.json'); const tag = process.env.GITHUB_REF_NAME; const expected = p.name === '@radityprtama/peek' ? 'v' + p.version + '-legacy' : p.name === '@usepeek/peek' ? 'v' + p.version : undefined; if (!expected || tag !== expected) process.exit(1)"
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
@@ -33,5 +34,17 @@ jobs:
       - run: pnpm build
       - run: pnpm pack:check
       - run: pnpm smoke:pack
+      - name: Verify previously published v0.2.2
+        if: github.ref_name == 'v0.2.2'
+        run: |
+          pack_dir=$(mktemp -d)
+          mkdir -p "$pack_dir/local" "$pack_dir/registry"
+          npm pack --pack-destination "$pack_dir/local" --silent
+          npm pack @usepeek/peek@0.2.2 --pack-destination "$pack_dir/registry" --silent
+          mkdir -p "$pack_dir/local/unpacked" "$pack_dir/registry/unpacked"
+          tar -xzf "$pack_dir/local"/*.tgz -C "$pack_dir/local/unpacked"
+          tar -xzf "$pack_dir/registry"/*.tgz -C "$pack_dir/registry/unpacked"
+          diff -qr "$pack_dir/local/unpacked/package" "$pack_dir/registry/unpacked/package"
       - name: Publish with provenance
+        if: github.ref_name != 'v0.2.2'
         run: npm publish --provenance --access public --loglevel=verbose

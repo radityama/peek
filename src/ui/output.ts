@@ -84,7 +84,7 @@ export class TerminalOutput implements Output {
   updateAvailable(current: string, latest: string): void {
     process.stdout.write(
       `\n${pc.bold(pc.yellow(`Update available ${current} → ${latest}`))}\n` +
-        'Run npm install --global @radityprtama/peek@latest\n',
+        'Run npm install --global @usepeek/peek@latest\n',
     )
   }
 
@@ -100,5 +100,6 @@ export class TerminalOutput implements Output {
     else if (check.status === 'warn')
       this.warning('doctor', `${check.name}: ${detail}`)
     else this.error(`${check.name}: ${detail}`)
+    if (check.detail) process.stdout.write(`  ${pc.dim(check.detail)}\n`)
   }
 }

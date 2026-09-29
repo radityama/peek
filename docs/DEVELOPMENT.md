@@ -4,7 +4,7 @@ Peek is one Node.js package. Node.js 22+ and pnpm 11.20.0 are used for local
 development. Enable pnpm with Corepack if it is not already available.
 
 ```sh
-git clone https://github.com/radityprtama/peek.git
+git clone https://github.com/radityama/peek.git
 cd peek
 corepack enable
 pnpm install
@@ -41,7 +41,7 @@ See [architecture](ARCHITECTURE.md) and [decisions](DECISIONS.md) for details.
 
 After `pnpm build`, run `node dist/cli.js --help`. To expose the local CLI as
 `peek` on your PATH, run `npm link` from the repository, then `peek --version`.
-Remove the link with `npm uninstall -g @radityprtama/peek` when finished. pnpm
+Remove the link with `npm uninstall -g @usepeek/peek` when finished. pnpm
 v11 no longer supports `pnpm link --global`. You can also avoid linking:
 
 ```sh
@@ -60,36 +60,68 @@ private data unless its HTTP routes protect that data.
 
 Before tagging, update the package version and changelog together. Run all
 checks above, inspect `npm pack --dry-run`, and manually test one real Quick
-Tunnel. The `v<package version>` tag triggers
-`.github/workflows/release.yml`, which rechecks the package and publishes to
-npm with provenance using GitHub OIDC. The package name is
-`@radityprtama/peek` and the intended repository is
-`radityprtama/peek`.
+Tunnel. A `v<package version>` tag triggers `.github/workflows/release.yml`,
+which rechecks the package and publishes to npm using GitHub OIDC and
+provenance for future versions. The already-published `v0.2.2` is handled
+separately below. The package name is `@usepeek/peek` and the repository is
+`radityama/peek`. npm cannot replace a published version.
 
-`0.1.0` and `0.1.1` are already published under this package name. npm will
-not replace a published version. Confirm that the version in `package.json`
-matches the tag and is absent from the registry before pushing it.
-
-Peek v0.2 uses `jiti` as its only new runtime dependency because Node 22.0
-cannot load TypeScript configuration files by itself. The optional config file
-is the only path that calls the loader.
-
-Configure the npm trusted publisher for owner `radityprtama`, repository
-`peek`, workflow filename `release.yml`, environment `Publish to npm`, and
-**allow direct `npm publish`**. The environment must match the release job's
-`environment` field exactly.
-The CLI equivalent, using npm 11.15.0+ from an authenticated account with 2FA,
-is:
-
-```sh
-npm trust github @radityprtama/peek --repo radityprtama/peek --file release.yml --env 'Publish to npm' --allow-publish
-```
-
-The GitHub repository must be public for npm provenance. Verify the trust
-entry before pushing a release tag. See [npm's trusted publisher
+The GitHub environment is named `Publish to npm`. The trusted publisher must
+name GitHub owner `radityama`, repository `peek`, workflow `release.yml`, and
+that exact environment, with direct `npm publish` allowed. The repository is
+public, as required for npm provenance. Do not put an npm token in GitHub
+Actions. See [npm's trusted publisher
 instructions](https://docs.npmjs.com/trusted-publishers/) and the
 [npm trust command](https://docs.npmjs.com/cli/v11/commands/npm-trust).
-Do not store an npm token in GitHub Actions.
+
+Peek v0.2 uses `jiti` to load optional TypeScript config on Node 22.0.
+
+### v0.2.2 scope migration
+
+The initial `@usepeek/peek@0.2.2` publication already exists on npm. Its
+tarball was compared file by file with the package built from the reviewed
+canonical commit. npm cannot replace that version or add provenance to the
+existing publication. The `v0.2.2` tag workflow verifies the published
+tarball instead of publishing it again. Future release tags still publish
+through the workflow with provenance.
+
+The legacy source commit `ea91483620faf65ffe0b6e58e783f7f403c6893c` is
+preserved on `release/legacy-v0.2.2-source`, so the canonical PR can be
+squash-merged. Do not move either release tag or reuse either published version.
+
+1. Squash-merge the reviewed canonical PR after the full gate passes. Create
+   GitHub Release `v0.2.2` from the resulting `main` commit. The tag workflow
+   must pass its package comparison. Verify a clean install, `peek --version`,
+   `peek doctor`, a normal preview, and cleanup after Ctrl+C.
+2. Sign in to npm with 2FA and configure a trusted publisher for the old
+   package using the same `radityama/peek`, `release.yml`, and
+   `Publish to npm` identity:
+
+   ```sh
+   npm trust list @radityprtama/peek
+   npm trust github @radityprtama/peek --repo radityama/peek --file release.yml --env 'Publish to npm' --allow-publish
+   ```
+
+   If npm rejects the new connection because the old GitHub owner is still
+   configured, revoke that obsolete entry by its listed ID with
+   `npm trust revoke --id <old-id> @radityprtama/peek`, then repeat the
+   `npm trust github` command. Confirm the new entry before tagging.
+   Tag `ea91483620faf65ffe0b6e58e783f7f403c6893c` as
+   `v0.2.2-legacy` and push the tag. The tag workflow checks the package
+   identity and version before publishing. Verify
+   `@radityprtama/peek@0.2.2` installs and shows its migration notice in an
+   interactive preview. The old update checker still points at the old
+   package so users of 0.2.1 can discover this final release.
+3. Only after both packages work, deprecate the old name from an authenticated
+   npm session:
+
+   ```sh
+   npm deprecate @radityprtama/peek "Moved to @usepeek/peek. Uninstall the old package and install @usepeek/peek to keep receiving updates."
+   ```
+
+   Check the deprecation message on the npm package page and during install.
+   Remove the obsolete npm trusted publisher entry for the old GitHub owner
+   after the final legacy publication succeeds.
 
 ## Repository rules
 

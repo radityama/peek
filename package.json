@@ -1,14 +1,14 @@
 {
-  "name": "@radityprtama/peek",
-  "version": "0.2.1",
+  "name": "@usepeek/peek",
+  "version": "0.2.2",
   "description": "Run your dev server. Share it instantly.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/radityprtama/peek.git"
+    "url": "git+https://github.com/radityama/peek.git"
   },
-  "homepage": "https://github.com/radityprtama/peek#readme",
+  "homepage": "https://github.com/radityama/peek#readme",
   "bugs": {
-    "url": "https://github.com/radityprtama/peek/issues"
+    "url": "https://github.com/radityama/peek/issues"
   },
   "type": "module",
   "bin": {

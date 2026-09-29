@@ -180,7 +180,10 @@ async function execute(args: CliArgs): Promise<void> {
     }
     if (isDoctor) {
       output.title()
-      const checks = await runDoctor({ cwd: process.cwd() })
+      const checks = await runDoctor({
+        cwd: process.cwd(),
+        verbose: args.verbose === true,
+      })
       for (const check of checks) output.doctorCheck(check)
       if (!args.live) {
         if (checks.some((check) => check.status === 'fail'))
@@ -341,7 +344,7 @@ if (wantsJson && normalArgs.includes('--version')) {
         '  peek -- pnpm dev         Run an explicit command\n\n' +
         '  --help                   Show this help\n' +
         '  --version                Show the version\n' +
-        '  Flags go before --. Docs: https://github.com/radityprtama/peek\n'
+        '  Flags go before --. Docs: https://github.com/radityama/peek\n'
       if (wantsJson) {
         process.stdout.write(
           `${JSON.stringify({ schemaVersion: 1, type: 'help', text: help })}\n`,
