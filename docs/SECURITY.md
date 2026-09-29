@@ -58,6 +58,6 @@ manager.
 ## Reporting vulnerabilities
 
 Use the repository's [private GitHub vulnerability reporting
-channel](https://github.com/radityprtama/peek/security/advisories/new). Do not
+channel](https://github.com/radityama/peek/security/advisories/new). Do not
 post exploit details in a public issue or discussion. Include the Peek version,
 platform, impact, and reproduction steps without sharing real secrets.

@@ -4,7 +4,7 @@ import { gt, prerelease, valid } from 'semver'
 import { claimCheck, isFresh, readCache, writeCache } from './cache.js'
 
 const REGISTRY_URL =
-  'https://registry.npmjs.org/-/package/@radityprtama%2fpeek/dist-tags'
+  'https://registry.npmjs.org/-/package/@usepeek%2fpeek/dist-tags'
 
 export interface UpdateAvailable {
   current: string

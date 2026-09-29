@@ -2,7 +2,7 @@
 
 Peek is a zero-config Node.js CLI that runs one project's dev server and
 shares its verified port through one temporary Cloudflare Quick Tunnel. It is
-one npm package, `@radityprtama/peek`, with `peek` as the executable. Read
+one npm package, `@usepeek/peek`, with `peek` as the executable. Read
 [the architecture](docs/ARCHITECTURE.md), [design
 spec](docs/superpowers/specs/2026-09-24-peek-v0.1.0-design.md), and
 [decisions](docs/DECISIONS.md) before changing startup or security behavior.
@@ -69,9 +69,12 @@ test. See [development](docs/DEVELOPMENT.md) for manual tunnel testing.
 Update `CHANGELOG.md` and package version together. Verify every pinned
 Cloudflare asset digest against the official release if changing the binary
 version. Run the local gate and inspect `npm pack --dry-run`. The tag release
-workflow checks the tag matches package version and publishes with npm
-provenance. `0.1.0` is already published; never reuse a published npm version.
+workflow checks the tag and package identity before publishing with npm
+provenance. `@radityprtama/peek` has published versions through `0.2.1`;
+`@usepeek/peek` is the canonical package from `0.2.2`. Never reuse a published
+version within either package.
 Verify that direct `npm publish` is authorized for the exact GitHub repository,
 `release.yml`, and `Publish to npm` environment before tagging
-`v<package version>`. See
-`docs/DEVELOPMENT.md`. Never place an npm token in this repository.
+`v<package version>`. The final legacy package uses `v0.2.2-legacy`; see
+`docs/DEVELOPMENT.md` for the migration sequence. Never place an npm token in
+this repository.

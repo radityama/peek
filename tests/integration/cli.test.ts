@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { beforeAll, expect, it } from 'vitest'
+import packageJson from '../../package.json' with { type: 'json' }
 
 const execFileAsync = promisify(execFile)
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -46,7 +47,7 @@ it('shows help without starting a tunnel', async () => {
 it('shows the package version', async () => {
   const result = await run(['--version'])
   expect(result.code).toBe(0)
-  expect(result.output).toContain('0.2.1')
+  expect(result.output).toContain(packageJson.version)
 })
 
 it('keeps help and version machine-readable with --json', async () => {
@@ -55,7 +56,7 @@ it('keeps help and version machine-readable with --json', async () => {
   expect(JSON.parse(version.output)).toMatchObject({
     schemaVersion: 1,
     type: 'version',
-    version: '0.2.1',
+    version: packageJson.version,
   })
   const help = await run(['--json', '--help'])
   expect(help.code).toBe(0)

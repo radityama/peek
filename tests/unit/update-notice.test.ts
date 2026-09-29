@@ -68,7 +68,7 @@ it('prints the scoped package update command in terminal mode', () => {
       expect.stringContaining('Update available 0.2.0 → 0.2.1'),
     )
     expect(write).toHaveBeenCalledWith(
-      expect.stringContaining('npm install --global @radityprtama/peek@latest'),
+      expect.stringContaining('npm install --global @usepeek/peek@latest'),
     )
   } finally {
     write.mockRestore()

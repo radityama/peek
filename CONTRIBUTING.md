@@ -6,15 +6,15 @@ in project spaces.
 
 ## Before you start
 
-- Search [issues](https://github.com/radityprtama/peek/issues) and existing pull
+- Search [issues](https://github.com/radityama/peek/issues) and existing pull
   requests for related work.
-- Use a [GitHub Discussion](https://github.com/radityprtama/peek/discussions)
+- Use a [GitHub Discussion](https://github.com/radityama/peek/discussions)
   for usage questions or an early design conversation. Open a feature request
   issue when you can describe the change and why it belongs in Peek.
 - Read the [roadmap](docs/ROADMAP.md) and [decisions](docs/DECISIONS.md) before
   proposing a major change. Roadmap items are ideas, not commitments.
 - Report security vulnerabilities through [private vulnerability
-  reporting](https://github.com/radityprtama/peek/security/advisories/new),
+  reporting](https://github.com/radityama/peek/security/advisories/new),
   following the [security guide](docs/SECURITY.md). Do not publish exploit
   details in an issue or discussion.
 

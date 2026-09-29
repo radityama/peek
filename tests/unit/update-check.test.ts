@@ -20,6 +20,7 @@ describe('update check', () => {
   it.each([
     ['0.2.0', '0.2.0', undefined],
     ['0.2.0', '0.2.1', { current: '0.2.0', latest: '0.2.1' }],
+    ['0.2.1', '0.2.2', { current: '0.2.1', latest: '0.2.2' }],
     ['0.2.0', '0.1.9', undefined],
     ['0.2.0', '0.3.0-beta.1', undefined],
     ['0.3.0-beta.1', '0.3.0', { current: '0.3.0-beta.1', latest: '0.3.0' }],
@@ -156,7 +157,7 @@ describe('update check', () => {
     try {
       expect(await requestLatest(new AbortController().signal)).toBe('0.2.1')
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://registry.npmjs.org/-/package/@radityprtama%2fpeek/dist-tags',
+        'https://registry.npmjs.org/-/package/@usepeek%2fpeek/dist-tags',
         expect.objectContaining({ headers: { accept: 'application/json' } }),
       )
     } finally {

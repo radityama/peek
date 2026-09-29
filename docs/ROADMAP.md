@@ -129,7 +129,7 @@ Theme: URLs humans can recognize, previews that explain themselves.
 
 Theme: Peek as a building block.
 
-- Export `start()` from `@radityprtama/peek` for use in Playwright, e2e tests, and agents
+- Export `start()` from `@usepeek/peek` for use in Playwright, e2e tests, and agents
 - Typed events: ready, connected, disconnected, stopped
 - `peek ci` for temporary previews from CI jobs
 - Stable, documented exit codes and `--json` schema

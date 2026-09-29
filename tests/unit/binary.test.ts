@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -51,6 +51,24 @@ it('redownloads a corrupted cached binary', async () => {
   expect(await readFile(path)).toEqual(bytes)
   expect(fetcher).toHaveBeenCalledTimes(2)
 })
+
+it.skipIf(process.platform === 'win32')(
+  'repairs execute permission on a verified cached binary without downloading again',
+  async () => {
+    const bytes = Buffer.from('known binary')
+    const fetcher = vi.fn(async () => new Response(bytes, { status: 200 }))
+    const options = {
+      cacheDir: await cache(),
+      asset: fakeAsset(bytes),
+      fetcher,
+    }
+    const path = await ensureCloudflared(options)
+    await chmod(path, 0o600)
+    await ensureCloudflared(options)
+    expect((await stat(path)).mode & 0o100).toBe(0o100)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  },
+)
 
 it('rejects an asset whose checksum is wrong', async () => {
   const bytes = Buffer.from('wrong data')

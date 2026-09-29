@@ -44,7 +44,7 @@ try {
     '--no-fund',
     join(temporary, tarballs[0]),
   ])
-  const packageRoot = join(installDir, 'node_modules', '@radityprtama', 'peek')
+  const packageRoot = join(installDir, 'node_modules', '@usepeek', 'peek')
   await access(join(packageRoot, 'dist', 'config.d.ts'))
   const installedPackage = JSON.parse(
     await readFile(join(packageRoot, 'package.json'), 'utf8'),
@@ -72,7 +72,7 @@ try {
     [
       '--input-type=module',
       '-e',
-      "import { defineConfig } from '@radityprtama/peek/config'; process.stdout.write(String(defineConfig({ port: 3000 }).port))",
+      "import { defineConfig } from '@usepeek/peek/config'; process.stdout.write(String(defineConfig({ port: 3000 }).port))",
     ],
     installDir,
     false,
