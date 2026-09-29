@@ -85,8 +85,9 @@ release tag.
 1. Create or verify the npm organization `usepeek` and your permission to
    publish public packages in it. Sign in to npm locally with 2FA. Confirm
    `npm whoami` succeeds, `npm view @usepeek/peek version` finds no package,
-   and the GitHub `Publish to npm` environment exists. Do not change repository
-   credentials or store tokens in this repository.
+   and the GitHub `Publish to npm` environment exists. Use npm CLI 11.15.0 or
+   newer for `npm trust` (`npm --version`; upgrade your local CLI if needed).
+   Do not store tokens in this repository.
 2. From a clean checkout of the reviewed canonical commit, set only the
    package version to `0.2.2-beta.0` in a disposable worktree and run the full
    local gate:
@@ -123,9 +124,14 @@ release tag.
    `radityama/peek`, `release.yml`, and `Publish to npm` identity:
 
    ```sh
+   npm trust list @radityprtama/peek
    npm trust github @radityprtama/peek --repo radityama/peek --file release.yml --env 'Publish to npm' --allow-publish
    ```
 
+   If npm rejects the new connection because the old GitHub owner is still
+   configured, revoke that obsolete entry by its listed ID with
+   `npm trust revoke --id <old-id> @radityprtama/peek`, then repeat the
+   `npm trust github` command. Confirm the new entry before tagging.
    Tag the reviewed legacy ancestor commit `v0.2.2-legacy` and push it. The
    tag workflow checks the package identity and version before publishing.
    Verify `@radityprtama/peek@0.2.2` installs and shows its migration notice
