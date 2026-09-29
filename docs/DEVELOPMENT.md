@@ -89,11 +89,23 @@ release tag.
    credentials or store tokens in this repository.
 2. From a clean checkout of the reviewed canonical commit, set only the
    package version to `0.2.2-beta.0` in a disposable worktree and run the full
-   local gate. Publish this bootstrap version with
-   `npm publish --tag bootstrap --access public`. The `bootstrap` tag prevents
-   it from becoming the default `latest` release. Do not publish the final
-   `0.2.2` version manually. npm requires the package to exist before its
-   trusted publisher can be configured.
+   local gate:
+
+   ```sh
+   git worktree add --detach ../peek-bootstrap HEAD
+   cd ../peek-bootstrap
+   npm pkg set version=0.2.2-beta.0
+   pnpm install --frozen-lockfile
+   pnpm lint && pnpm typecheck && pnpm test && pnpm build
+   pnpm pack:check && pnpm smoke:pack
+   npm publish --tag bootstrap --access public
+   ```
+
+   The `bootstrap` tag prevents this first publication from becoming the
+   default `latest` release. Verify it with
+   `npm view @usepeek/peek dist-tags --json`. Do not publish the final `0.2.2`
+   version manually. npm requires the package to exist before its trusted
+   publisher can be configured.
 3. Configure the new package's trusted publisher from the authenticated npm
    account:
 

@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import packageJson from '../../package.json' with { type: 'json' }
 import { CLOUDFLARED_VERSION } from '../../src/cloudflared/platform.js'
 import { runDoctor } from '../../src/core/doctor.js'
 
@@ -15,7 +16,7 @@ it('reports actionable local checks without a public tunnel', async () => {
     const checks = await runDoctor({ cwd, networkCheck: async () => false })
     expect(checks.find((check) => check.name === 'node')?.status).toBe('pass')
     expect(checks.find((check) => check.name === 'peek')?.message).toContain(
-      '0.2.2',
+      packageJson.version,
     )
     expect(
       checks.find((check) => check.name === 'platform')?.message,
