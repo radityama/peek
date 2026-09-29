@@ -34,5 +34,17 @@ jobs:
       - run: pnpm build
       - run: pnpm pack:check
       - run: pnpm smoke:pack
+      - name: Verify previously published v0.2.2
+        if: github.ref_name == 'v0.2.2'
+        run: |
+          pack_dir=$(mktemp -d)
+          mkdir -p "$pack_dir/local" "$pack_dir/registry"
+          npm pack --pack-destination "$pack_dir/local" --silent
+          npm pack @usepeek/peek@0.2.2 --pack-destination "$pack_dir/registry" --silent
+          mkdir -p "$pack_dir/local/unpacked" "$pack_dir/registry/unpacked"
+          tar -xzf "$pack_dir/local"/*.tgz -C "$pack_dir/local/unpacked"
+          tar -xzf "$pack_dir/registry"/*.tgz -C "$pack_dir/registry/unpacked"
+          diff -qr "$pack_dir/local/unpacked/package" "$pack_dir/registry/unpacked/package"
       - name: Publish with provenance
+        if: github.ref_name != 'v0.2.2'
         run: npm publish --provenance --access public --loglevel=verbose

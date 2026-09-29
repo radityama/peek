@@ -62,7 +62,8 @@ Before tagging, update the package version and changelog together. Run all
 checks above, inspect `npm pack --dry-run`, and manually test one real Quick
 Tunnel. A `v<package version>` tag triggers `.github/workflows/release.yml`,
 which rechecks the package and publishes to npm using GitHub OIDC and
-provenance. The package name is `@usepeek/peek` and the repository is
+provenance for future versions. The already-published `v0.2.2` is handled
+separately below. The package name is `@usepeek/peek` and the repository is
 `radityama/peek`. npm cannot replace a published version.
 
 The GitHub environment is named `Publish to npm`. The trusted publisher must
@@ -77,51 +78,24 @@ Peek v0.2 uses `jiti` to load optional TypeScript config on Node 22.0.
 
 ### v0.2.2 scope migration
 
-Complete these steps only after the implementation and local gate have been
-reviewed and approved. The canonical commit and the ancestor legacy commit
-must both be reachable from `main`. Do not reuse a published version or move a
-release tag.
+The initial `@usepeek/peek@0.2.2` publication already exists on npm. Its
+tarball was compared file by file with the package built from the reviewed
+canonical commit. npm cannot replace that version or add provenance to the
+existing publication. The `v0.2.2` tag workflow verifies the published
+tarball instead of publishing it again. Future release tags still publish
+through the workflow with provenance.
 
-1. Create or verify the npm organization `usepeek` and your permission to
-   publish public packages in it. Sign in to npm locally with 2FA. Confirm
-   `npm whoami` succeeds, `npm view @usepeek/peek version` finds no package,
-   and the GitHub `Publish to npm` environment exists. Use npm CLI 11.15.0 or
-   newer for `npm trust` (`npm --version`; upgrade your local CLI if needed).
-   Do not store tokens in this repository.
-2. From a clean checkout of the reviewed canonical commit, set only the
-   package version to `0.2.2-beta.0` in a disposable worktree and run the full
-   local gate:
+The legacy source commit `ea91483620faf65ffe0b6e58e783f7f403c6893c` is
+preserved on `release/legacy-v0.2.2-source`, so the canonical PR can be
+squash-merged. Do not move either release tag or reuse either published version.
 
-   ```sh
-   git worktree add --detach ../peek-bootstrap HEAD
-   cd ../peek-bootstrap
-   npm pkg set version=0.2.2-beta.0
-   pnpm install --frozen-lockfile
-   pnpm lint && pnpm typecheck && pnpm test && pnpm build
-   pnpm pack:check && pnpm smoke:pack
-   npm publish --tag bootstrap --access public
-   ```
-
-   The `bootstrap` tag prevents this first publication from becoming the
-   default `latest` release. Verify it with
-   `npm view @usepeek/peek dist-tags --json`. Do not publish the final `0.2.2`
-   version manually. npm requires the package to exist before its trusted
-   publisher can be configured.
-3. Configure the new package's trusted publisher from the authenticated npm
-   account:
-
-   ```sh
-   npm trust github @usepeek/peek --repo radityama/peek --file release.yml --env 'Publish to npm' --allow-publish
-   ```
-
-   Verify the trust entry and the GitHub environment. npm does not validate
-   the connection when it is saved, so check all fields before tagging.
-4. After the reviewed canonical commit is on `main`, tag it `v0.2.2` and push
-   the tag. The workflow must publish `@usepeek/peek@0.2.2`. Verify the package
-   metadata, provenance, a clean install, `peek --version`, `peek doctor`, a
-   normal preview, and cleanup after Ctrl+C. Stop if any check fails.
-5. Configure a second trusted publisher for the old package with the same
-   `radityama/peek`, `release.yml`, and `Publish to npm` identity:
+1. Squash-merge the reviewed canonical PR after the full gate passes. Create
+   GitHub Release `v0.2.2` from the resulting `main` commit. The tag workflow
+   must pass its package comparison. Verify a clean install, `peek --version`,
+   `peek doctor`, a normal preview, and cleanup after Ctrl+C.
+2. Sign in to npm with 2FA and configure a trusted publisher for the old
+   package using the same `radityama/peek`, `release.yml`, and
+   `Publish to npm` identity:
 
    ```sh
    npm trust list @radityprtama/peek
@@ -132,12 +106,13 @@ release tag.
    configured, revoke that obsolete entry by its listed ID with
    `npm trust revoke --id <old-id> @radityprtama/peek`, then repeat the
    `npm trust github` command. Confirm the new entry before tagging.
-   Tag the reviewed legacy ancestor commit `v0.2.2-legacy` and push it. The
-   tag workflow checks the package identity and version before publishing.
-   Verify `@radityprtama/peek@0.2.2` installs and shows its migration notice
-   in an interactive preview. The old update checker still points at the old
+   Tag `ea91483620faf65ffe0b6e58e783f7f403c6893c` as
+   `v0.2.2-legacy` and push the tag. The tag workflow checks the package
+   identity and version before publishing. Verify
+   `@radityprtama/peek@0.2.2` installs and shows its migration notice in an
+   interactive preview. The old update checker still points at the old
    package so users of 0.2.1 can discover this final release.
-6. Only after both packages work, deprecate the old name from an authenticated
+3. Only after both packages work, deprecate the old name from an authenticated
    npm session:
 
    ```sh
