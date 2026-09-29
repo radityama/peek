@@ -1,0 +1,9 @@
+.next
+node_modules
+.source
+.env
+.DS_Store
+next-env.d.ts
+
+.docs-sync-tmp/
+.vercel

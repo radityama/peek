@@ -1,0 +1,22 @@
+{
+  "title": "Get Started",
+  "icon": "getStarted",
+  "root": true,
+  "pages": [
+    "introduction",
+    "comparison",
+    "installation",
+    "basic-usage",
+    "concepts",
+    "authentication",
+    "adapters",
+    "integrations",
+    "infrastructure",
+    "plugins",
+    "guides",
+    "ai-resources",
+    "reference",
+    "...",
+    "!examples"
+  ]
+}
