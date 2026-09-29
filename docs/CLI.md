@@ -99,7 +99,8 @@ TypeScript on the full Node 22+ range.
 package manager detection, the selected command, config, the pinned
 cloudflared version and cached binary checksum, HTTPS access, and
 socket-inspection tools. The HTTPS check does not prove that outbound tunnel
-port 7844 is open. `--live` also starts a
+port 7844 is open. `--verbose` adds safe detail about the cache and network
+checks. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
 receive no status claim.

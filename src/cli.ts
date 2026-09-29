@@ -180,7 +180,10 @@ async function execute(args: CliArgs): Promise<void> {
     }
     if (isDoctor) {
       output.title()
-      const checks = await runDoctor({ cwd: process.cwd() })
+      const checks = await runDoctor({
+        cwd: process.cwd(),
+        verbose: args.verbose === true,
+      })
       for (const check of checks) output.doctorCheck(check)
       if (!args.live) {
         if (checks.some((check) => check.status === 'fail'))

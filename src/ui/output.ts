@@ -100,5 +100,6 @@ export class TerminalOutput implements Output {
     else if (check.status === 'warn')
       this.warning('doctor', `${check.name}: ${detail}`)
     else this.error(`${check.name}: ${detail}`)
+    if (check.detail) process.stdout.write(`  ${pc.dim(check.detail)}\n`)
   }
 }

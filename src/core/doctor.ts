@@ -12,11 +12,13 @@ export interface DoctorCheck {
   status: 'pass' | 'warn' | 'fail'
   message: string
   remedy?: string
+  detail?: string
 }
 
 export interface DoctorOptions {
   cwd: string
   networkCheck?: () => Promise<boolean>
+  verbose?: boolean
 }
 
 export async function runDoctor(
@@ -111,12 +113,21 @@ export async function runDoctor(
             name: 'cloudflared',
             status: 'pass',
             message: `Cached cloudflared ${CLOUDFLARED_VERSION} checksum is valid.`,
+            ...(options.verbose
+              ? {
+                  detail:
+                    'The cached binary matches its pinned SHA-256 digest.',
+                }
+              : {}),
           }
         : {
             name: 'cloudflared',
             status: 'warn',
             message: `No verified cloudflared ${CLOUDFLARED_VERSION} binary is cached.`,
             remedy: 'A normal peek run will download and verify cloudflared.',
+            ...(options.verbose
+              ? { detail: 'Peek never runs an unverified cached binary.' }
+              : {}),
           },
     )
   } catch (error) {
@@ -137,6 +148,12 @@ export async function runDoctor(
             status: 'pass',
             message:
               'Cloudflare HTTPS is reachable; tunnel port 7844 is not checked.',
+            ...(options.verbose
+              ? {
+                  detail:
+                    'HTTPS HEAD has a 5-second timeout; cloudflared needs outbound UDP or TCP port 7844.',
+                }
+              : {}),
           }
         : {
             name: 'network',
@@ -144,6 +161,12 @@ export async function runDoctor(
             message: 'Cloudflare was not reachable.',
             remedy:
               'Check HTTPS access and outbound port 7844 before starting a public tunnel.',
+            ...(options.verbose
+              ? {
+                  detail:
+                    'HTTPS HEAD has a 5-second timeout; cloudflared needs outbound UDP or TCP port 7844.',
+                }
+              : {}),
           },
     )
   } catch {

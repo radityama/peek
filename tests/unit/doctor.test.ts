@@ -34,6 +34,28 @@ it('reports actionable local checks without a public tunnel', async () => {
     expect(
       checks.find((check) => check.name === 'cloudflared')?.message,
     ).toContain(CLOUDFLARED_VERSION)
+    expect(checks.every((check) => check.detail === undefined)).toBe(true)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+it('adds safe network context in verbose diagnostics', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'peek-doctor-'))
+  try {
+    await writeFile(
+      join(cwd, 'peek.config.ts'),
+      `export default { command: [${JSON.stringify(process.execPath)}, '--version'] }`,
+    )
+    const checks = await runDoctor({
+      cwd,
+      verbose: true,
+      networkCheck: async () => false,
+    })
+    expect(checks.find((check) => check.name === 'network')?.detail).toContain(
+      '7844',
+    )
+    expect(JSON.stringify(checks)).not.toContain(cwd)
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }
