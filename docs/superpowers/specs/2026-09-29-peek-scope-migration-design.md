@@ -7,7 +7,7 @@ Status: approved in conversation, including v0.2.2 additions
 
 Peek remains the same CLI and Cloudflare remains its only public tunnel provider. The repository is `radityama/peek`. The npm package `@radityprtama/peek@0.2.2` is the final migration release. `@usepeek/peek@0.2.2` is the canonical release. Both names can use the same version because npm treats them as separate packages; they require separate Git commits and tags.
 
-The legacy commit stays in the canonical branch history so it can be tagged `legacy-v0.2.2` after final approval. The canonical commit is tagged `v0.2.2` after a bootstrap publication establishes the new package and its trusted publisher is configured. No tag or publish occurs during implementation.
+The legacy commit stays in the canonical branch history so it can be tagged `v0.2.2-legacy` after final approval. The canonical commit is tagged `v0.2.2` after a bootstrap publication establishes the new package and its trusted publisher is configured. No tag or publish occurs during implementation.
 
 ## Legacy user path
 

@@ -4,7 +4,7 @@ Peek is one Node.js package. Node.js 22+ and pnpm 11.20.0 are used for local
 development. Enable pnpm with Corepack if it is not already available.
 
 ```sh
-git clone https://github.com/radityprtama/peek.git
+git clone https://github.com/radityama/peek.git
 cd peek
 corepack enable
 pnpm install
@@ -41,7 +41,7 @@ See [architecture](ARCHITECTURE.md) and [decisions](DECISIONS.md) for details.
 
 After `pnpm build`, run `node dist/cli.js --help`. To expose the local CLI as
 `peek` on your PATH, run `npm link` from the repository, then `peek --version`.
-Remove the link with `npm uninstall -g @radityprtama/peek` when finished. pnpm
+Remove the link with `npm uninstall -g @usepeek/peek` when finished. pnpm
 v11 no longer supports `pnpm link --global`. You can also avoid linking:
 
 ```sh
@@ -60,36 +60,75 @@ private data unless its HTTP routes protect that data.
 
 Before tagging, update the package version and changelog together. Run all
 checks above, inspect `npm pack --dry-run`, and manually test one real Quick
-Tunnel. The `v<package version>` tag triggers
-`.github/workflows/release.yml`, which rechecks the package and publishes to
-npm with provenance using GitHub OIDC. The package name is
-`@radityprtama/peek` and the intended repository is
-`radityprtama/peek`.
+Tunnel. A `v<package version>` tag triggers `.github/workflows/release.yml`,
+which rechecks the package and publishes to npm using GitHub OIDC and
+provenance. The package name is `@usepeek/peek` and the repository is
+`radityama/peek`. npm cannot replace a published version.
 
-`0.1.0` and `0.1.1` are already published under this package name. npm will
-not replace a published version. Confirm that the version in `package.json`
-matches the tag and is absent from the registry before pushing it.
-
-Peek v0.2 uses `jiti` as its only new runtime dependency because Node 22.0
-cannot load TypeScript configuration files by itself. The optional config file
-is the only path that calls the loader.
-
-Configure the npm trusted publisher for owner `radityprtama`, repository
-`peek`, workflow filename `release.yml`, environment `Publish to npm`, and
-**allow direct `npm publish`**. The environment must match the release job's
-`environment` field exactly.
-The CLI equivalent, using npm 11.15.0+ from an authenticated account with 2FA,
-is:
-
-```sh
-npm trust github @radityprtama/peek --repo radityprtama/peek --file release.yml --env 'Publish to npm' --allow-publish
-```
-
-The GitHub repository must be public for npm provenance. Verify the trust
-entry before pushing a release tag. See [npm's trusted publisher
+The GitHub environment is named `Publish to npm`. The trusted publisher must
+name GitHub owner `radityama`, repository `peek`, workflow `release.yml`, and
+that exact environment, with direct `npm publish` allowed. The repository is
+public, as required for npm provenance. Do not put an npm token in GitHub
+Actions. See [npm's trusted publisher
 instructions](https://docs.npmjs.com/trusted-publishers/) and the
 [npm trust command](https://docs.npmjs.com/cli/v11/commands/npm-trust).
-Do not store an npm token in GitHub Actions.
+
+Peek v0.2 uses `jiti` to load optional TypeScript config on Node 22.0.
+
+### v0.2.2 scope migration
+
+Complete these steps only after the implementation and local gate have been
+reviewed and approved. The canonical commit and the ancestor legacy commit
+must both be reachable from `main`. Do not reuse a published version or move a
+release tag.
+
+1. Create or verify the npm organization `usepeek` and your permission to
+   publish public packages in it. Sign in to npm locally with 2FA. Confirm
+   `npm whoami` succeeds, `npm view @usepeek/peek version` finds no package,
+   and the GitHub `Publish to npm` environment exists. Do not change repository
+   credentials or store tokens in this repository.
+2. From a clean checkout of the reviewed canonical commit, set only the
+   package version to `0.2.2-beta.0` in a disposable worktree and run the full
+   local gate. Publish this bootstrap version with
+   `npm publish --tag bootstrap --access public`. The `bootstrap` tag prevents
+   it from becoming the default `latest` release. Do not publish the final
+   `0.2.2` version manually. npm requires the package to exist before its
+   trusted publisher can be configured.
+3. Configure the new package's trusted publisher from the authenticated npm
+   account:
+
+   ```sh
+   npm trust github @usepeek/peek --repo radityama/peek --file release.yml --env 'Publish to npm' --allow-publish
+   ```
+
+   Verify the trust entry and the GitHub environment. npm does not validate
+   the connection when it is saved, so check all fields before tagging.
+4. After the reviewed canonical commit is on `main`, tag it `v0.2.2` and push
+   the tag. The workflow must publish `@usepeek/peek@0.2.2`. Verify the package
+   metadata, provenance, a clean install, `peek --version`, `peek doctor`, a
+   normal preview, and cleanup after Ctrl+C. Stop if any check fails.
+5. Configure a second trusted publisher for the old package with the same
+   `radityama/peek`, `release.yml`, and `Publish to npm` identity:
+
+   ```sh
+   npm trust github @radityprtama/peek --repo radityama/peek --file release.yml --env 'Publish to npm' --allow-publish
+   ```
+
+   Tag the reviewed legacy ancestor commit `v0.2.2-legacy` and push it. The
+   tag workflow checks the package identity and version before publishing.
+   Verify `@radityprtama/peek@0.2.2` installs and shows its migration notice
+   in an interactive preview. The old update checker still points at the old
+   package so users of 0.2.1 can discover this final release.
+6. Only after both packages work, deprecate the old name from an authenticated
+   npm session:
+
+   ```sh
+   npm deprecate @radityprtama/peek "Moved to @usepeek/peek. Uninstall the old package and install @usepeek/peek to keep receiving updates."
+   ```
+
+   Check the deprecation message on the npm package page and during install.
+   Remove the obsolete npm trusted publisher entry for the old GitHub owner
+   after the final legacy publication succeeds.
 
 ## Repository rules
 

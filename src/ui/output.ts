@@ -84,14 +84,7 @@ export class TerminalOutput implements Output {
   updateAvailable(current: string, latest: string): void {
     process.stdout.write(
       `\n${pc.bold(pc.yellow(`Update available ${current} → ${latest}`))}\n` +
-        'Run npm install --global @radityprtama/peek@latest\n',
-    )
-  }
-
-  migrationNotice(): void {
-    process.stdout.write(
-      `\n${pc.bold(pc.yellow('Peek has moved to @usepeek/peek'))}\n` +
-        'Run npm install --global @usepeek/peek@latest to continue receiving updates.\n',
+        'Run npm install --global @usepeek/peek@latest\n',
     )
   }
 

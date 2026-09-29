@@ -27,7 +27,7 @@
 - [ ] Add one terminal-only notice after the first preview URL. Keep the old package registry lookup and existing update cache behavior.
 - [ ] Run the focused and existing update tests.
 - [ ] Set the legacy package version to `0.2.2`, update `CHANGELOG.md`, and update its GitHub metadata to `radityama/peek` for OIDC identity.
-- [ ] Adjust the tag workflow so `legacy-v0.2.2` can publish only the legacy package at version `0.2.2`; keep `v<version>` for the canonical release. Verify both cases without pushing tags.
+- [ ] Adjust the tag workflow so `v0.2.2-legacy` can publish only the legacy package at version `0.2.2`; keep `v<version>` for the canonical release. Verify both cases without pushing tags.
 - [ ] Commit this state and record the commit SHA. Do not create a tag.
 
 ## Task 2: Doctor and focused reliability

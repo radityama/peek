@@ -157,7 +157,7 @@ describe('update check', () => {
     try {
       expect(await requestLatest(new AbortController().signal)).toBe('0.2.1')
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://registry.npmjs.org/-/package/@radityprtama%2fpeek/dist-tags',
+        'https://registry.npmjs.org/-/package/@usepeek%2fpeek/dist-tags',
         expect.objectContaining({ headers: { accept: 'application/json' } }),
       )
     } finally {

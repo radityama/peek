@@ -79,7 +79,7 @@ Place `peek.config.ts` in the project root when automatic command or port
 detection needs help. The command is an argv array, never a shell string:
 
 ```ts
-import { defineConfig } from '@radityprtama/peek/config'
+import { defineConfig } from '@usepeek/peek/config'
 
 export default defineConfig({
   command: ['bun', 'run', 'dev'],
@@ -95,8 +95,11 @@ tokens after `--` override config values. `peek` needs no config in a normal
 project. A config file runs as trusted project code. Peek uses `jiti` to load
 TypeScript on the full Node 22+ range.
 
-`peek doctor` checks Node, the selected command, config, the cached binary's
-checksum, network access, and socket-inspection tools. `--live` also starts a
+`peek doctor` reports Peek and Node versions, OS and architecture, project and
+package manager detection, the selected command, config, the pinned
+cloudflared version and cached binary checksum, HTTPS access, and
+socket-inspection tools. The HTTPS check does not prove that outbound tunnel
+port 7844 is open. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
 receive no status claim.
