@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { CLOUDFLARED_VERSION } from '../../src/cloudflared/platform.js'
 import { runDoctor } from '../../src/core/doctor.js'
 
 it('reports actionable local checks without a public tunnel', async () => {
@@ -13,7 +14,16 @@ it('reports actionable local checks without a public tunnel', async () => {
     )
     const checks = await runDoctor({ cwd, networkCheck: async () => false })
     expect(checks.find((check) => check.name === 'node')?.status).toBe('pass')
+    expect(checks.find((check) => check.name === 'peek')?.message).toContain(
+      '0.2.2',
+    )
+    expect(
+      checks.find((check) => check.name === 'platform')?.message,
+    ).toContain(`${process.platform}/${process.arch}`)
     expect(checks.find((check) => check.name === 'config')?.status).toBe('pass')
+    expect(checks.find((check) => check.name === 'project')?.message).toContain(
+      'configured command',
+    )
     expect(checks.find((check) => check.name === 'command')?.status).toBe(
       'pass',
     )
@@ -21,6 +31,31 @@ it('reports actionable local checks without a public tunnel', async () => {
       status: 'warn',
       remedy: expect.any(String),
     })
+    expect(
+      checks.find((check) => check.name === 'cloudflared')?.message,
+    ).toContain(CLOUDFLARED_VERSION)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+it('identifies a project package manager without printing its source', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'peek-doctor-'))
+  try {
+    await writeFile(
+      join(cwd, 'package.json'),
+      JSON.stringify({
+        name: 'private-project-name',
+        packageManager: 'npm@11.0.0',
+        scripts: { dev: 'node server.js' },
+      }),
+    )
+    const checks = await runDoctor({ cwd, networkCheck: async () => true })
+    expect(checks.find((check) => check.name === 'project')).toMatchObject({
+      status: 'pass',
+      message: expect.stringContaining('npm'),
+    })
+    expect(JSON.stringify(checks)).not.toContain('private-project-name')
   } finally {
     await rm(cwd, { recursive: true, force: true })
   }

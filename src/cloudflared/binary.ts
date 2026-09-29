@@ -54,7 +54,19 @@ export async function ensureCloudflared(
   const suffix = platform === 'win32' ? '.exe' : ''
   const binaryPath = cachedBinaryPath(platform, arch, options.cacheDir)
 
-  if (await validCachedBinary(binaryPath, asset.binarySha256)) return binaryPath
+  if (await validCachedBinary(binaryPath, asset.binarySha256)) {
+    try {
+      if (platform !== 'win32') await chmod(binaryPath, 0o700)
+      return binaryPath
+    } catch (cause) {
+      throw new PeekError(
+        'CLOUDFLARED_INSTALL_ERROR',
+        'Peek could not make the verified Cloudflare tunnel engine executable.',
+        'Check permissions under ~/.peek/bin and retry.',
+        cause,
+      )
+    }
+  }
 
   await mkdir(folder, { recursive: true, mode: 0o700 })
   const nonce = randomUUID()

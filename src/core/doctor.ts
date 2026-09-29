@@ -1,6 +1,8 @@
 import { access } from 'node:fs/promises'
 import { whichCommand } from 'which-command'
+import packageJson from '../../package.json' with { type: 'json' }
 import { inspectCachedCloudflared } from '../cloudflared/binary.js'
+import { CLOUDFLARED_VERSION } from '../cloudflared/platform.js'
 import type { PeekConfig } from '../config.js'
 import { loadConfig } from './config.js'
 import { readProject } from './project.js'
@@ -21,6 +23,16 @@ export async function runDoctor(
   options: DoctorOptions,
 ): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = []
+  checks.push({
+    name: 'peek',
+    status: 'pass',
+    message: `Peek ${packageJson.version}`,
+  })
+  checks.push({
+    name: 'platform',
+    status: 'pass',
+    message: `${process.platform}/${process.arch}`,
+  })
   const major = Number(process.versions.node.split('.')[0])
   checks.push(
     major >= 22
@@ -56,6 +68,13 @@ export async function runDoctor(
 
   try {
     const project = config?.command ? undefined : await readProject(options.cwd)
+    checks.push({
+      name: 'project',
+      status: 'pass',
+      message: project
+        ? `${project.packageManager} project with a dev script.`
+        : 'Using a configured command; project detection skipped.',
+    })
     const file = config?.command?.[0] ?? project?.packageManager
     if (!file) throw new Error('No development command could be selected.')
     const executable = await whichCommand(file, { cwd: options.cwd })
@@ -71,6 +90,12 @@ export async function runDoctor(
     )
   } catch (error) {
     checks.push({
+      name: 'project',
+      status: 'fail',
+      message: String(error),
+      remedy: 'Add a dev script or configure a command.',
+    })
+    checks.push({
       name: 'command',
       status: 'fail',
       message: String(error),
@@ -85,12 +110,12 @@ export async function runDoctor(
         ? {
             name: 'cloudflared',
             status: 'pass',
-            message: 'Cached binary checksum is valid.',
+            message: `Cached cloudflared ${CLOUDFLARED_VERSION} checksum is valid.`,
           }
         : {
             name: 'cloudflared',
             status: 'warn',
-            message: 'No verified binary is cached.',
+            message: `No verified cloudflared ${CLOUDFLARED_VERSION} binary is cached.`,
             remedy: 'A normal peek run will download and verify cloudflared.',
           },
     )
@@ -110,13 +135,15 @@ export async function runDoctor(
         ? {
             name: 'network',
             status: 'pass',
-            message: 'Cloudflare is reachable.',
+            message:
+              'Cloudflare HTTPS is reachable; tunnel port 7844 is not checked.',
           }
         : {
             name: 'network',
             status: 'warn',
             message: 'Cloudflare was not reachable.',
-            remedy: 'Check the network before starting a public tunnel.',
+            remedy:
+              'Check HTTPS access and outbound port 7844 before starting a public tunnel.',
           },
     )
   } catch {
@@ -124,7 +151,8 @@ export async function runDoctor(
       name: 'network',
       status: 'warn',
       message: 'Network check could not complete.',
-      remedy: 'Check the network before starting a public tunnel.',
+      remedy:
+        'Check HTTPS access and outbound port 7844 before starting a public tunnel.',
     })
   }
 
