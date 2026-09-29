@@ -1,6 +1,9 @@
 import { expect, it, vi } from 'vitest'
 import { TerminalOutput } from '../../src/ui/output.js'
-import { shouldCheckForUpdates } from '../../src/update/eligibility.js'
+import {
+  shouldCheckForUpdates,
+  shouldShowMigrationNotice,
+} from '../../src/update/eligibility.js'
 import { createUpdateNotice } from '../../src/update/notice.js'
 
 const update = { current: '0.2.0', latest: '0.2.1' }
@@ -58,6 +61,42 @@ it('checks an interactive preview by default', () => {
   expect(shouldCheckForUpdates({ isDoctor: false, json: false, env: {} })).toBe(
     true,
   )
+})
+
+it('shows legacy migration only for an interactive preview', () => {
+  expect(
+    shouldShowMigrationNotice({
+      isDoctor: false,
+      json: false,
+      interactive: true,
+      env: {},
+    }),
+  ).toBe(true)
+  for (const options of [
+    { isDoctor: true, json: false, interactive: true, env: {} },
+    { isDoctor: false, json: true, interactive: true, env: {} },
+    { isDoctor: false, json: false, interactive: false, env: {} },
+    { isDoctor: false, json: false, interactive: true, env: { CI: '1' } },
+    {
+      isDoctor: false,
+      json: false,
+      interactive: true,
+      env: { NODE_ENV: 'test' },
+    },
+  ])
+    expect(shouldShowMigrationNotice(options)).toBe(false)
+})
+
+it('prints the canonical install command in the legacy migration notice', () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  try {
+    new TerminalOutput('off').migrationNotice()
+    expect(write).toHaveBeenCalledWith(
+      expect.stringContaining('npm install --global @usepeek/peek@latest'),
+    )
+  } finally {
+    write.mockRestore()
+  }
 })
 
 it('prints the scoped package update command in terminal mode', () => {

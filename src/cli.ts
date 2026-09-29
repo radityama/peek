@@ -20,7 +20,10 @@ import { JsonOutput } from './ui/json-output.js'
 import { TerminalOutput } from './ui/output.js'
 import type { QrMode } from './ui/qr.js'
 import { checkForUpdate } from './update/check.js'
-import { shouldCheckForUpdates } from './update/eligibility.js'
+import {
+  shouldCheckForUpdates,
+  shouldShowMigrationNotice,
+} from './update/eligibility.js'
 import { createUpdateNotice } from './update/notice.js'
 import { formatError, PeekError } from './utils/errors.js'
 
@@ -74,6 +77,22 @@ async function execute(args: CliArgs): Promise<void> {
     if (output instanceof TerminalOutput)
       output.updateAvailable(current, latest)
   })
+  let migrationShown = false
+  const showMigration = (): void => {
+    if (migrationShown) return
+    if (
+      shouldShowMigrationNotice({
+        isDoctor,
+        json: args.json === true,
+        interactive: process.stdout.isTTY === true,
+        env: process.env,
+      }) &&
+      output instanceof TerminalOutput
+    ) {
+      migrationShown = true
+      output.migrationNotice()
+    }
+  }
   lifecycle.installSignals()
   try {
     const unknownFlags = Object.keys(args).filter(
@@ -276,10 +295,12 @@ async function execute(args: CliArgs): Promise<void> {
       onReady: ({ localUrl, publicUrl }) => {
         output.ready(localUrl, publicUrl)
         updateNotice.ready()
+        showMigration()
       },
       onLanReady: (url) => {
         output.lanReady(url)
         updateNotice.ready()
+        showMigration()
       },
       framework,
       onPreviewFinding: (finding) =>

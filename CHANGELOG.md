@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 — 2026-09-29
+
+- Final release of `@radityprtama/peek`. Interactive previews show a migration
+  notice for the new `@usepeek/peek` package after the preview URL appears.
+- The installed `peek` command and its preview behavior are unchanged.
+
 ## 0.2.1 — 2026-09-28
 
 - Notify interactive preview users when a newer Peek version is published.

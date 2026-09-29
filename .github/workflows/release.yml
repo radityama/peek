@@ -24,8 +24,9 @@ jobs:
       # registry-url creates an empty NODE_AUTH_TOKEN entry that can mask OIDC.
       - run: npm install --global npm@11.19.0
       - run: npm --version
-      - name: Verify tag matches package version
-        run: node -e "if (process.env.GITHUB_REF_NAME !== 'v' + require('./package.json').version) process.exit(1)"
+      - name: Verify tag and package identity
+        run: |
+          node -e "const p = require('./package.json'); const tag = process.env.GITHUB_REF_NAME; const expected = p.name === '@radityprtama/peek' ? 'v' + p.version + '-legacy' : p.name === '@usepeek/peek' ? 'v' + p.version : undefined; if (!expected || tag !== expected) process.exit(1)"
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck

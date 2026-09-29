@@ -88,6 +88,13 @@ export class TerminalOutput implements Output {
     )
   }
 
+  migrationNotice(): void {
+    process.stdout.write(
+      `\n${pc.bold(pc.yellow('Peek has moved to @usepeek/peek'))}\n` +
+        'Run npm install --global @usepeek/peek@latest to continue receiving updates.\n',
+    )
+  }
+
   error(message: string): void {
     logger.error(message)
   }
