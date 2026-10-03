@@ -1,7 +1,7 @@
 # v0.2 CLI integration harness
 
 Date: 2026-10-03
-Status: design approved in conversation; written-spec review pending
+Status: design and written spec approved in conversation
 Branch: `chore/v02-integration-harness`
 Baseline: `a31d7898938572898aafa79f300ba775a81a7ff0`, Peek `0.2.2`
 
