@@ -537,7 +537,8 @@ behavior. Message prose and operating-system chunk sizes are not stable API.
 A dropped tunnel emits `warning` with kind `tunnel-dropped`, then `state`
 with value `reconnecting`. Failed replacement attempts can emit
 `reconnect-failed` warnings. A successful replacement emits another `ready`
-with the same local URL and a new public URL; the dev server keeps running.
+with the same local URL and the replacement connection's public URL; the dev
+server keeps running.
 Initial connection retries need not enter the reconnecting output state.
 See [the lifecycle retry policy](ARCHITECTURE.md#progress-and-ownership).
 
