@@ -1,7 +1,7 @@
 # v0.2 preview lifecycle hardening
 
 Date: 2026-10-03
-Status: design approved in conversation; written spec awaiting review
+Status: design and written spec approved in conversation
 Branch: `refactor/v02-lifecycle`
 Baseline: `c27092550ce0a41fe04e69b8f7dd9c56de5f2060`, Peek `0.2.2`
 Prerequisite: [CLI integration harness PR #10](https://github.com/radityama/peek/pull/10), merged with all required checks passing
