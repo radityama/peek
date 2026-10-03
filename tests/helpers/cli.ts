@@ -25,10 +25,23 @@ export interface CliOptions {
   entry?: 'injected' | 'shipped'
   args?: string[]
   project?: boolean
-  mode?: 'announced' | 'silent' | 'delayed' | 'crash' | 'tree' | 'blocked-host'
+  mode?:
+    | 'announced'
+    | 'silent'
+    | 'delayed'
+    | 'crash'
+    | 'tree'
+    | 'blocked-host'
+    | 'ignore-sigterm'
   port?: number
   bind?: '127.0.0.1' | '0.0.0.0'
-  providerMode?: 'normal' | 'fail-once'
+  providerMode?:
+    | 'normal'
+    | 'fail-once'
+    | 'connect-pending'
+    | 'reconnect-pending'
+    | 'disconnect-on-force'
+    | 'disconnect-error'
   framework?: 'node' | 'vite'
   env?: NodeJS.ProcessEnv
   timeoutMs?: number
@@ -51,6 +64,10 @@ export interface CliHandle {
   waitForExit(): Promise<CliExit>
   signal(name: 'SIGINT' | 'SIGTERM'): Promise<void>
   readJournal(): Promise<JournalRecord[]>
+  waitForJournal(
+    role: string,
+    predicate?: (record: JournalRecord) => boolean,
+  ): Promise<JournalRecord>
   assertResourcesStopped(): Promise<void>
   dispose(): Promise<void>
 }
@@ -278,6 +295,26 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
         ),
       signal,
       readJournal,
+      waitForJournal: async (role, predicate = () => true) => {
+        const deadline = Date.now() + (options.timeoutMs ?? 12_000)
+        let records: JournalRecord[] = []
+        while (Date.now() < deadline) {
+          records = await readJournal()
+          const record = records.find(
+            (record) => record.role === role && predicate(record),
+          )
+          if (failure)
+            throw new Error(`${failure.message}${diagnostic()}`, {
+              cause: failure,
+            })
+          if (record) return record
+          if (closed) break
+          await delay(25)
+        }
+        throw new Error(
+          `Missing journal checkpoint ${role} (${JSON.stringify(exit)})\nJournal tail:\n${JSON.stringify(records.slice(-12))}${diagnostic()}`,
+        )
+      },
       assertResourcesStopped: async () => {
         const { pids, ports } = await resources()
         await wait(

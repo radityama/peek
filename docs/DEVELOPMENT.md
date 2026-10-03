@@ -61,8 +61,35 @@ PID and verified port. WebSocket acceptance verifies the handshake and an
 echoed text message, including partial frame reads and bytes sent with the
 HTTP upgrade. A successful HTTP 101 alone is insufficient.
 
+The lifecycle process tests interrupt discovery after the delayed dev process
+is journalled, initial connection after a real transport listener opens, and
+reconnect after the original transport drops and its replacement listens.
+They check no late `ready`, preserving the original ready event during
+reconnect. Repeated SIGINT/SIGTERM cases wait for a recorded provider shutdown
+checkpoint before the second signal, verify forced transport closure, and
+retain the first signal's exit status. Dev exit after readiness must stop the
+transport without reconnecting. A POSIX fixture retains its HTTP listener
+after SIGTERM, proving Peek escalates to SIGKILL.
+
+JSON process cases cover cleanup rejection after a signal and an immediate
+dev crash paired with a distinct cleanup rejection. They assert the actionable
+remedy, primary error before cleanup error, expected exit status, every stdout
+line parsing, empty stderr, and resource shutdown. The immediate startup crash
+has no transport yet; the signal case closes a real transport before its
+provider reports the cleanup failure. See [shutdown and diagnostics in the
+architecture](ARCHITECTURE.md#shutdown-and-diagnostics) for the authoritative
+waiting budgets and error behavior. Retry policy is documented under
+[progress and ownership](ARCHITECTURE.md#progress-and-ownership).
+
+Run the focused lifecycle gate with:
+
+```sh
+pnpm exec vitest run tests/integration/cli-process.test.ts tests/integration/lifecycle.test.ts tests/unit/lifecycle.test.ts tests/unit/cleanup.test.ts
+```
+
 The journal records process IDs and listening ports independently of CLI
-output. Tests assert those processes stopped and ports closed before fallback
+output. Journal waits have bounded deadlines and diagnostic output tails.
+Tests assert those processes stopped and ports closed before fallback
 teardown can force cleanup. Temporary projects use `node ./dev.mjs` in their
 npm script; the wrapper imports the fixture by file URL so paths with spaces
 work without a leading quoted executable in Windows `cmd.exe`.
@@ -78,6 +105,9 @@ On POSIX, lifecycle tests send real SIGINT and SIGTERM and verify exit codes
 that invokes the signal handler; the resulting dev process and descendant
 cleanup still runs through real Execa processes. This does not exercise native
 Windows console Ctrl+C, which needs a separate manual stress test.
+The SIGTERM-ignore fixture is skipped on Windows because Node's native
+`process.kill` terminates the process unconditionally for SIGINT/SIGTERM/SIGKILL;
+an IPC-invoked handler cannot prove graceful signal refusal on that platform.
 
 The local transport proves forwarding and CLI recovery behavior. It does not
 prove Cloudflare availability, TLS, public hostname handling, or framework

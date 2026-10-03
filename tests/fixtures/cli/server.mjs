@@ -131,7 +131,11 @@ const listen = () =>
       if (mode !== 'silent') console.log(`Fixture http://127.0.0.1:${port}`)
     },
   )
-const startup = mode === 'delayed' ? setTimeout(listen, 350) : undefined
+const startup =
+  mode === 'delayed'
+    ? setTimeout(listen, Number(process.env.PEEK_TEST_STARTUP_DELAY_MS ?? 350))
+    : undefined
+if (startup) journal({ role: 'dev-startup-wait', pid: process.pid })
 if (!startup) listen()
 
 let stopping = false
@@ -148,4 +152,12 @@ const stop = () => {
   })
 }
 process.on('SIGINT', stop)
-process.on('SIGTERM', stop)
+process.on('SIGTERM', () => {
+  if (mode === 'ignore-sigterm') {
+    journal({
+      role: 'dev-sigterm-ignored',
+      pid: process.pid,
+      port: server.address().port,
+    })
+  } else stop()
+})
