@@ -17,6 +17,7 @@ interface Transport {
   child: ChildProcess
   exited: Promise<TunnelExit>
   closed: boolean
+  port?: number
 }
 
 export function prepareFixtureProvider(
@@ -24,7 +25,7 @@ export function prepareFixtureProvider(
 ): TunnelProvider {
   options.signal.throwIfAborted()
   journal({ role: 'preparation', originHostHeader: options.originHostHeader })
-  return new FixtureProvider(options.originHostHeader)
+  return new FixtureProvider(options.originHostHeader, options.signal)
 }
 
 class FixtureProvider implements TunnelProvider {
@@ -33,7 +34,10 @@ class FixtureProvider implements TunnelProvider {
   private active: Transport | undefined
   private stopping: Promise<void> | undefined
 
-  constructor(private readonly originHostHeader: 'localhost' | undefined) {}
+  constructor(
+    private readonly originHostHeader: 'localhost' | undefined,
+    private readonly shutdownSignal: AbortSignal,
+  ) {}
 
   async connect({
     port,
@@ -123,6 +127,26 @@ class FixtureProvider implements TunnelProvider {
         child.once('close', onClose)
         if (signal.aborted) onAbort()
       })
+      state.port = listener
+      const mode = process.env.PEEK_TEST_PROVIDER_MODE
+      if (
+        mode === 'connect-pending' ||
+        (mode === 'reconnect-pending' && attempt > 1)
+      ) {
+        journal({
+          role: 'connect-pending',
+          pid: child.pid,
+          port: listener,
+          targetPort: port,
+          attempt,
+        })
+        await new Promise<never>((_, reject) => {
+          const onAbort = (): void => reject(signal.reason)
+          if (signal.aborted) onAbort()
+          else signal.addEventListener('abort', onAbort, { once: true })
+        })
+      }
+      signal.throwIfAborted()
       return { url: `http://127.0.0.1:${listener}`, exited }
     } catch (error) {
       await this.disconnect()
@@ -133,7 +157,12 @@ class FixtureProvider implements TunnelProvider {
   disconnect(): Promise<void> {
     if (this.stopping) return this.stopping
     const state = this.active
-    if (!state) return Promise.resolve()
+    if (!state) {
+      return this.shutdownSignal.aborted &&
+        process.env.PEEK_TEST_PROVIDER_MODE === 'disconnect-error'
+        ? Promise.reject(new Error('Fixture transport cleanup failed'))
+        : Promise.resolve()
+    }
     this.stopping = this.stop(state).finally(() => {
       if (this.active === state) this.active = undefined
       this.stopping = undefined
@@ -142,10 +171,38 @@ class FixtureProvider implements TunnelProvider {
   }
 
   forceDisconnect(): void {
+    if (this.active)
+      journal({
+        role: 'force-disconnect',
+        pid: this.active.child.pid,
+        port: this.active.port,
+      })
     this.active?.child.kill('SIGKILL')
   }
 
   private async stop(state: Transport): Promise<void> {
+    const mode = process.env.PEEK_TEST_PROVIDER_MODE
+    if (mode === 'disconnect-on-force' && !state.closed) {
+      journal({
+        role: 'disconnect-wait',
+        pid: state.child.pid,
+        port: state.port,
+      })
+      await state.exited
+      return
+    }
+    await this.stopTransport(state)
+    if (mode === 'disconnect-error' && this.shutdownSignal.aborted) {
+      journal({
+        role: 'disconnect-error',
+        pid: state.child.pid,
+        port: state.port,
+      })
+      throw new Error('Fixture transport cleanup failed')
+    }
+  }
+
+  private async stopTransport(state: Transport): Promise<void> {
     if (state.closed) return
     state.child.kill('SIGTERM')
     if (!(await settlesWithin(state.exited, 2000))) {

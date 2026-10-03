@@ -1,5 +1,4 @@
 import type { Readable } from 'node:stream'
-import { setTimeout as delay } from 'node:timers/promises'
 import { execa } from 'execa'
 import { PeekError } from '../utils/errors.js'
 import type { TunnelConnection, TunnelExit, TunnelProvider } from './types.js'
@@ -14,6 +13,22 @@ export interface TunnelChild {
 }
 
 export type TunnelLauncher = (binaryPath: string, args: string[]) => TunnelChild
+
+async function waitForExit(
+  exit: Promise<TunnelExit>,
+  milliseconds: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const deadline = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), milliseconds)
+    timer.unref()
+  })
+  try {
+    return await Promise.race([exit.then(() => true), deadline])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
 
 function launchCloudflared(binaryPath: string, args: string[]): TunnelChild {
   const child = execa(binaryPath, args, {
@@ -142,32 +157,32 @@ export class CloudflareProvider implements TunnelProvider {
       signal.addEventListener('abort', onAbort, { once: true })
       watchStream(child.stdout)
       watchStream(child.stderr)
-      void child.exit.then((result) => {
-        exited = true
-        settle(undefined, this.exitError(result))
-      })
+      void child.exit.then(
+        (result) => {
+          exited = true
+          if (this.child === child) this.child = undefined
+          settle(undefined, this.exitError(result))
+        },
+        (error: unknown) => settle(undefined, error),
+      )
     })
   }
 
   async disconnect(): Promise<void> {
     const child = this.child
     if (!child) return
-    try {
-      child.kill('SIGTERM')
-      const stopped = await Promise.race([
-        child.exit.then(() => true),
-        delay(3_000, undefined, { ref: false }).then(() => false),
-      ])
-      if (!stopped) {
-        child.kill('SIGKILL')
-        await Promise.race([
-          child.exit,
-          delay(1_000, undefined, { ref: false }),
-        ])
+    child.kill('SIGTERM')
+    if (!(await waitForExit(child.exit, 3_000))) {
+      child.kill('SIGKILL')
+      if (!(await waitForExit(child.exit, 1_000))) {
+        throw new PeekError(
+          'PROCESS_CLEANUP_ERROR',
+          'Cloudflare tunnel exit could not be confirmed after force termination.',
+          'Check for a remaining cloudflared process before starting Peek again.',
+        )
       }
-    } finally {
-      if (this.child === child) this.child = undefined
     }
+    if (this.child === child) this.child = undefined
   }
 
   forceDisconnect(): void {

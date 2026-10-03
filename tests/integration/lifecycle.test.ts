@@ -4,14 +4,16 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
 import { afterEach, expect, it, vi } from 'vitest'
-import { Lifecycle } from '../../src/core/lifecycle.js'
+import { Lifecycle, type LifecyclePhase } from '../../src/core/lifecycle.js'
 import { runPeek } from '../../src/core/run.js'
+import { inspectChildListeningPorts } from '../../src/core/server.js'
 import {
   CloudflareProvider,
   type TunnelChild,
 } from '../../src/tunnel/cloudflare.js'
 import { checkForUpdate } from '../../src/update/check.js'
 import { createUpdateNotice } from '../../src/update/notice.js'
+import { PeekError } from '../../src/utils/errors.js'
 
 const serverFile = fileURLToPath(
   new URL('../fixtures/fake-server/server.mjs', import.meta.url),
@@ -58,6 +60,7 @@ it('starts a fake server and tunnel and cleans both on cancellation', async () =
   const lifecycle = new Lifecycle()
   lifecycles.push(lifecycle)
   const provider = fakeProvider()
+  const phases: LifecyclePhase[] = []
   let ready: (value: { localUrl: string; publicUrl: string }) => void = () => {}
   const readyPromise = new Promise<{ localUrl: string; publicUrl: string }>(
     (resolve) => {
@@ -70,7 +73,12 @@ it('starts a fake server and tunnel and cleans both on cancellation', async () =
     command: { file: process.execPath, args: [serverFile] },
     lifecycle,
     provider,
-    onReady: ready,
+    onState: () => phases.push(lifecycle.phase),
+    onServerReady: () => phases.push(lifecycle.phase),
+    onReady: (urls) => {
+      phases.push(lifecycle.phase)
+      ready(urls)
+    },
     onDevOutput: (_stream, text) => {
       const match = /PID: (\d+)/.exec(text)
       if (match?.[1]) devPid = Number(match[1])
@@ -79,9 +87,18 @@ it('starts a fake server and tunnel and cleans both on cancellation', async () =
   const urls = await readyPromise
   expect(urls.localUrl).toMatch(/^http:\/\/localhost:\d+$/)
   expect(urls.publicUrl).toBe('https://fixture-peek.trycloudflare.com')
+  expect(phases).toEqual([
+    'starting-server',
+    'discovering-server',
+    'server-ready',
+    'tunnel-connecting',
+    'ready',
+  ])
   lifecycle.requestStop()
   await expect(running).resolves.toBeUndefined()
   expect(lifecycle.isStopped).toBe(true)
+  expect(lifecycle.phase).toBe('stopped')
+  expect(lifecycle.outcome?.kind).toBe('requested')
   expect(devPid).toBeTypeOf('number')
   expect(isRunning(devPid ?? 0)).toBe(false)
   expect(isRunning(tunnelPids.at(-1) ?? 0)).toBe(false)
@@ -225,9 +242,10 @@ it('stops a hung server during readiness', async () => {
     lifecycle,
     provider: fakeProvider(),
     onDevOutput: () => {},
+    onState: (state) => {
+      if (state === 'waiting') lifecycle.requestStop()
+    },
   })
-  await new Promise((resolve) => setTimeout(resolve, 100))
-  lifecycle.requestStop()
   await expect(running).resolves.toBeUndefined()
   expect(lifecycle.isStopped).toBe(true)
 })
@@ -261,6 +279,7 @@ it('stops a descendant process with the dev server', async () => {
 it('keeps a LAN preview without starting a tunnel', async () => {
   const lifecycle = new Lifecycle()
   lifecycles.push(lifecycle)
+  const phases: LifecyclePhase[] = []
   let resolveReady: (url: string) => void = () => {}
   const ready = new Promise<string>((resolve) => {
     resolveReady = resolve
@@ -271,9 +290,20 @@ it('keeps a LAN preview without starting a tunnel', async () => {
     lifecycle,
     lan: true,
     lanAddressSelector: async () => '192.168.1.4',
-    onLanReady: resolveReady,
+    onState: () => phases.push(lifecycle.phase),
+    onServerReady: () => phases.push(lifecycle.phase),
+    onLanReady: (url) => {
+      phases.push(lifecycle.phase)
+      resolveReady(url)
+    },
   })
   expect(await ready).toMatch(/^http:\/\/192\.168\.1\.4:\d+$/)
+  expect(phases).toEqual([
+    'starting-server',
+    'discovering-server',
+    'server-ready',
+    'ready',
+  ])
   lifecycle.requestStop()
   await expect(running).resolves.toBeUndefined()
   expect(lifecycle.isStopped).toBe(true)
@@ -307,6 +337,7 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
   const retryFailure = vi.fn()
   const tunnelDrop = vi.fn()
   const devPids = new Set<number>()
+  const phases: LifecyclePhase[] = []
   let resolveTwice: () => void = () => {}
   const twice = new Promise<void>((resolve) => {
     resolveTwice = resolve
@@ -317,11 +348,13 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
     lifecycle,
     provider: fakeProvider(['later-crash', 'crash', 'ready']),
     retryDelaysMs: [1],
+    onState: () => phases.push(lifecycle.phase),
     onDevOutput: (_stream, text) => {
       const match = /PID: (\d+)/.exec(text)
       if (match?.[1]) devPids.add(Number(match[1]))
     },
     onReady: (urls) => {
+      phases.push(lifecycle.phase)
       ready(urls)
       if (ready.mock.calls.length === 2) resolveTwice()
     },
@@ -331,6 +364,14 @@ it('reconnects a dropped tunnel without restarting the dev server', async () => 
   await twice
   expect(ready).toHaveBeenCalledTimes(2)
   expect(devPids.size).toBe(1)
+  expect(phases).toEqual([
+    'starting-server',
+    'discovering-server',
+    'tunnel-connecting',
+    'ready',
+    'reconnecting',
+    'ready',
+  ])
   expect(retryFailure).toHaveBeenCalledTimes(1)
   expect(tunnelDrop).toHaveBeenCalledWith('Tunnel exited with code 1.')
   expect(lifecycle.isStopped).toBe(false)
@@ -363,6 +404,250 @@ it('retries an initial tunnel failure while keeping the dev server alive', async
   lifecycle.requestStop()
   await expect(running).resolves.toBeUndefined()
 })
+
+it('stops from the starting callback before spawning a dev process', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const output: string[] = []
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(),
+    onState: (state) => {
+      if (state === 'starting') lifecycle.requestStop()
+    },
+    onDevOutput: (_stream, text) => output.push(text),
+  })
+  expect(output).toEqual([])
+  expect(setDev).not.toHaveBeenCalled()
+  expect(lifecycle.phase).toBe('stopped')
+  expect(lifecycle.outcome?.kind).toBe('requested')
+})
+
+it('retains the dev startup failure when provider cleanup rejects', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const cleanupError = new Error('provider disconnect failed')
+  const disconnect = vi.fn(async () => {
+    throw cleanupError
+  })
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  const connect = vi.fn()
+  const error = await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile, 'crash'] },
+    lifecycle,
+    provider: { name: 'fixture', connect, disconnect },
+  }).catch((failure: unknown) => failure)
+  expect(error).toMatchObject({ code: 'SERVER_START_ERROR' })
+  expect(lifecycle.phase).toBe('stopped')
+  expect(lifecycle.outcome).toEqual({ kind: 'failed', error })
+  if (lifecycle.outcome?.kind === 'failed') {
+    expect(lifecycle.outcome.error).toBe(error)
+  }
+  const cleanup = await lifecycle.stop()
+  expect(cleanup.error).toMatchObject({ code: 'PROCESS_CLEANUP_ERROR' })
+  expect(cleanup.error?.message).toContain('tunnel')
+  expect(disconnect).toHaveBeenCalledOnce()
+  expect(connect).not.toHaveBeenCalled()
+  const dev = setDev.mock.calls[0]?.[0]
+  expect(dev).toBeDefined()
+  expect(isRunning(dev?.pid ?? 0)).toBe(false)
+  expect(await inspectChildListeningPorts(dev?.pid)).toEqual([])
+})
+
+it('closes a verified dev listener despite primary and cleanup failures', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const primary = new PeekError(
+    'SERVER_START_ERROR',
+    'startup failed after port verification',
+    'Fix the startup callback.',
+  )
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  let port: number | undefined
+  await expect(
+    runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: {
+        name: 'fixture',
+        connect: vi.fn(),
+        disconnect: async () => {
+          throw new Error('provider cleanup failed')
+        },
+      },
+      onServerReady: (value) => {
+        port = value
+        throw primary
+      },
+    }),
+  ).rejects.toBe(primary)
+  expect(port).toBeTypeOf('number')
+  expect(lifecycle.outcome).toEqual({ kind: 'failed', error: primary })
+  expect((await lifecycle.stop()).error).toMatchObject({
+    code: 'PROCESS_CLEANUP_ERROR',
+  })
+  const dev = setDev.mock.calls[0]?.[0]
+  expect(dev?.pid).toBeTypeOf('number')
+  expect(isRunning(dev?.pid ?? 0)).toBe(false)
+  expect(await inspectChildListeningPorts(dev?.pid)).toEqual([])
+})
+
+it('rejects cleanup failure after an otherwise successful requested stop', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: {
+      name: 'fixture',
+      connect: vi.fn(),
+      disconnect: async () => {
+        throw new Error('provider cleanup failed')
+      },
+    },
+    onState: (state) => {
+      if (state === 'starting') lifecycle.requestStop()
+    },
+  })
+  const cleanup = await running.catch((error: unknown) => error)
+  expect(cleanup).toMatchObject({ code: 'PROCESS_CLEANUP_ERROR' })
+  expect((await lifecycle.stop()).error).toBe(cleanup)
+  expect(setDev).not.toHaveBeenCalled()
+  expect(lifecycle.outcome?.kind).toBe('requested')
+})
+
+it('does not publish a LAN address selected after a direct stop', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const selected = deferred<string>()
+  const selecting = deferred<void>()
+  const ready = vi.fn()
+  let port: number | undefined
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    lan: true,
+    onServerReady: (value) => {
+      port = value
+    },
+    lanAddressSelector: () => {
+      selecting.resolve()
+      return selected.promise
+    },
+    onLanReady: ready,
+  })
+  await selecting.promise
+  await lifecycle.stop()
+  selected.resolve('192.168.1.4')
+  await expect(running).resolves.toBeUndefined()
+  expect(ready).not.toHaveBeenCalled()
+  expect(lifecycle.phase).toBe('stopped')
+  expect(lifecycle.outcome?.kind).toBe('completed')
+  expect(port).toBeTypeOf('number')
+})
+
+it('does not publish a connection resolved during cancellation', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const connecting = deferred<void>()
+  const connected = deferred<{
+    url: string
+    exited: Promise<{ exitCode: number | null }>
+  }>()
+  const ready = vi.fn()
+  const preview = vi.fn(async () => [])
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: {
+      name: 'fixture',
+      connect: ({ signal }) => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            connected.resolve({
+              url: 'https://late.trycloudflare.com',
+              exited: new Promise(() => {}),
+            })
+          },
+          { once: true },
+        )
+        connecting.resolve()
+        return connected.promise
+      },
+      disconnect: async () => {},
+    },
+    framework: 'vite',
+    previewCheck: preview,
+    onReady: ready,
+  })
+  await connecting.promise
+  lifecycle.requestStop()
+  await expect(running).resolves.toBeUndefined()
+  expect(ready).not.toHaveBeenCalled()
+  expect(preview).not.toHaveBeenCalled()
+  expect(lifecycle.phase).toBe('stopped')
+})
+
+it('does not start preview checks when the ready callback stops Peek', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const preview = vi.fn(async () => [])
+  await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(),
+    framework: 'vite',
+    previewCheck: preview,
+    onReady: () => lifecycle.requestStop(),
+  })
+  expect(preview).not.toHaveBeenCalled()
+  expect(lifecycle.outcome?.kind).toBe('requested')
+})
+
+it('preserves an independent failure thrown after a requested stop', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const failure = new PeekError(
+    'SERVER_START_ERROR',
+    'startup callback failed',
+    'Restart after fixing the startup callback.',
+  )
+  await expect(
+    runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: fakeProvider(),
+      onState: (state) => {
+        if (state !== 'starting') return
+        lifecycle.requestStop()
+        throw failure
+      },
+    }),
+  ).rejects.toBe(failure)
+})
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((yes) => {
+    resolve = yes
+  })
+  return { promise, resolve }
+}
 
 function isRunning(pid: number): boolean {
   if (pid <= 0) return false
