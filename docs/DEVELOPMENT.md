@@ -114,6 +114,26 @@ prove Cloudflare availability, TLS, public hostname handling, or framework
 HMR compatibility. Host rejection uses a synthetic nonlocal Host value, and
 the WebSocket echo server is a small fixture rather than a framework install.
 
+## JSON contract tests
+
+Run the focused contract checks with:
+
+~~~sh
+pnpm exec vitest run tests/unit/json-output.test.ts tests/integration/cli-json.test.ts tests/integration/cli-preview.test.ts tests/integration/cli-process.test.ts
+~~~
+
+The independent wire assertions cover all thirteen current event variants,
+required fields, doctor optional fields/statuses, UTC timestamps, help/version
+timestamp omissions, escaped chunks, malformed records and newline framing.
+Real CLI tests keep stdout and stderr separate for help, version, misuse,
+config errors, normal preview, eligible LAN preview, reconnect and cleanup
+diagnostics. They check processes and listeners before fallback teardown.
+
+The injected doctor runs real local checks and replaces only its network
+operation; a passing fixture network check does not measure Cloudflare
+reachability. A trusted config that logs directly to stdout deliberately
+demonstrates the documented isolation limit. See [the JSON contract](JSON.md).
+
 ## Try the CLI locally
 
 After `pnpm build`, run `node dist/cli.js --help`. To expose the local CLI as

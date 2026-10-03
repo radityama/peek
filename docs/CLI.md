@@ -21,7 +21,7 @@ a shell.
 | `--help` | Show usage without starting a process. |
 | `--version` | Show package version. |
 | `--lan` | Show a LAN URL and QR without starting or downloading a tunnel. The dev server must listen on the LAN address. |
-| `--json` | Write versioned, newline-delimited JSON events, including child output. No QR or human-readable decoration. |
+| `--json` | Write versioned, newline-delimited JSON events, including child output. No QR or human-readable decoration. See the [JSON event contract](JSON.md). |
 | `--live` | With `peek doctor`, start a temporary tunnel and run preview checks. |
 | `--host-header localhost` | Ask `cloudflared` to send `Host: localhost` to the dev server when it rejects the temporary hostname. |
 
