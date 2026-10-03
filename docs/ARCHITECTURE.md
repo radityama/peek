@@ -41,6 +41,7 @@ flowchart TD
 | `src/cloudflared/*` | Fixed release mapping, download, checksum, and cache. |
 | `src/tunnel/*` | Small provider contract and Cloudflare implementation. |
 | `src/ui/*` | Human and JSON event output and terminal-size-aware QR rendering. |
+| `src/ui/json-event.ts` | Type the current JSON payloads and own metadata/framing for runtime, help and version events. |
 | `src/update/*` | Best-effort npm version check, user-level 24-hour cache, and notification timing; no dependency from the preview core. |
 | `src/utils/errors.ts` | Actionable error categories and formatting. |
 
@@ -155,7 +156,8 @@ The CLI uses its existing renderer for both the primary startup/dev error and
 a distinct cleanup error, in that order. Cleanup alone is rendered once.
 Default output contains the message and remedy; causes appear only with
 `--verbose`. JSON errors remain event objects with parseable stdout, without
-fallback stacks or human logs. Ordinary failures and cleanup failure after
+fallback stacks or human logs. See the [JSON event contract](JSON.md) for the
+wire shape and stream behavior. Ordinary failures and cleanup failure after
 otherwise successful completion use exit 1. Signals retain 130/143; successful
 completion and the live doctor's requested stop remain 0. CLI misuse remains 2.
 

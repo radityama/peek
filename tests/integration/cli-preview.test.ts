@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
 import { privateLanAddresses } from '../../src/core/lan.js'
 import { type CliHandle, startCli } from '../helpers/cli.js'
+import { readJsonEvents } from '../helpers/json-contract.js'
 
 const handles: CliHandle[] = []
 const listeners: Server[] = []
@@ -104,16 +105,10 @@ it('keeps JSON stdout pure and preserves both child output streams', async () =>
   handles.push(cli)
   await assertPreview(cli)
   await stop(cli)
-  const events = cli.stdout
-    .split('\n')
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line))
-  expect(events.length).toBeGreaterThan(0)
-  for (const event of events) {
-    expect(event.schemaVersion).toBe(1)
-    expect(typeof event.type).toBe('string')
-    expect(event.type.length).toBeGreaterThan(0)
-  }
+  const events = readJsonEvents(cli.stdout)
+  expect(events.some((event) => event.type === 'start')).toBe(true)
+  expect(events.some((event) => event.type === 'state')).toBe(true)
+  expect(events.some((event) => event.type === 'ready')).toBe(true)
   const childOutput = events.filter((event) => event.type === 'child-output')
   const stdout = childOutput
     .filter((event) => event.stream === 'stdout')
@@ -149,6 +144,10 @@ it('serves a LAN preview through the actual private interface without a provider
     await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),
   ).toBe('peek fixture')
   await stop(cli)
+  expect(
+    readJsonEvents(cli.stdout).filter((event) => event.type === 'lan-ready'),
+  ).toHaveLength(1)
+  expect(cli.stderr).toBe('')
   expect(
     (await cli.readJournal()).some((record) =>
       ['preparation', 'connection', 'transport'].includes(record.role),

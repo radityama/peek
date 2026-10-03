@@ -5,6 +5,7 @@ import {
   type JournalRecord,
   startCli,
 } from '../helpers/cli.js'
+import { readJsonEvents } from '../helpers/json-contract.js'
 
 const handles: CliHandle[] = []
 afterEach(async () => {
@@ -36,8 +37,7 @@ function readyCount(cli: CliHandle): number {
 }
 
 function assertJsonOnly(cli: CliHandle): void {
-  const lines = cli.stdout.trimEnd().split('\n')
-  expect(lines.map((line) => JSON.parse(line))).toEqual(cli.events)
+  expect(readJsonEvents(cli.stdout)).toEqual(cli.events)
   expect(cli.stdout).not.toMatch(/\n\s+at |PeekError:|AggregateError:/)
   expect(cli.stderr).toBe('')
 }
@@ -94,6 +94,7 @@ it('reports a dev startup crash and stops without connecting a transport', async
     records.some((record) => ['connection', 'transport'].includes(record.role)),
   ).toBe(false)
   await cli.assertResourcesStopped()
+  assertJsonOnly(cli)
 })
 
 it('recovers from the initial tunnel failure with the original dev PID and port', async () => {
@@ -377,5 +378,27 @@ it('replaces a dropped real transport while preserving the dev PID and port', as
       .map((r) => r.attempt),
   ).toEqual([1, 2])
   await stop(cli)
-  expect(cli.stderr).toBe('')
+  assertJsonOnly(cli)
+  const events = readJsonEvents(cli.stdout)
+  const firstReady = events.findIndex((event) => event.type === 'ready')
+  const dropped = events.findIndex(
+    (event, index) =>
+      index > firstReady &&
+      event.type === 'warning' &&
+      event.kind === 'tunnel-dropped',
+  )
+  const reconnecting = events.findIndex(
+    (event, index) =>
+      index > dropped &&
+      event.type === 'state' &&
+      event.state === 'reconnecting',
+  )
+  const secondReady = events.findIndex(
+    (event, index) => index > reconnecting && event.type === 'ready',
+  )
+  expect(firstReady).toBeGreaterThanOrEqual(0)
+  expect(dropped).toBeGreaterThan(firstReady)
+  expect(reconnecting).toBeGreaterThan(dropped)
+  expect(secondReady).toBeGreaterThan(reconnecting)
+  expect(events.filter((event) => event.type === 'ready')).toHaveLength(2)
 }, 20_000)
