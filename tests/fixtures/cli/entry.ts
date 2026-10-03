@@ -1,4 +1,5 @@
 import { runCli } from '../../../src/cli-command.js'
+import { runDoctor } from '../../../src/core/doctor.js'
 import { prepareFixtureProvider } from './provider.js'
 
 const onMessage = (message: unknown): void => {
@@ -19,6 +20,8 @@ try {
     process.stdout.write('fixture non-JSON stdout\n')
   await runCli(process.argv.slice(2), {
     prepareProvider: async (options) => prepareFixtureProvider(options),
+    doctor: (options) =>
+      runDoctor({ ...options, networkCheck: async () => true }),
   })
 } finally {
   process.off('message', onMessage)

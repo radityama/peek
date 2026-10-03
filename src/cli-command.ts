@@ -33,6 +33,7 @@ export interface ProviderPreparation {
 
 export interface CliDependencies {
   prepareProvider(options: ProviderPreparation): Promise<TunnelProvider>
+  doctor?: typeof runDoctor
 }
 
 async function prepareProvider(
@@ -217,7 +218,7 @@ export async function runCli(
       }
       if (isDoctor) {
         output.title()
-        const checks = await runDoctor({
+        const checks = await (dependencies?.doctor ?? runDoctor)({
           cwd: process.cwd(),
           verbose: args.verbose === true,
         })

@@ -25,6 +25,7 @@ export interface CliOptions {
   entry?: 'injected' | 'shipped'
   args?: string[]
   project?: boolean
+  config?: string
   mode?:
     | 'announced'
     | 'silent'
@@ -108,6 +109,9 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
           : {}),
       }),
     )
+    if (options.config !== undefined) {
+      await writeFile(join(directory, 'peek.config.ts'), options.config)
+    }
     const args = [...(options.args ?? ['--json'])]
     if (!options.project) args.push('--', process.execPath, fixture)
     const entry =
