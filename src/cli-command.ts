@@ -15,6 +15,7 @@ import { readProject } from './core/project.js'
 import { runPeek } from './core/run.js'
 import { CloudflareProvider } from './tunnel/cloudflare.js'
 import type { TunnelProvider } from './tunnel/types.js'
+import { writeJsonEvent } from './ui/json-event.js'
 import { JsonOutput } from './ui/json-output.js'
 import { TerminalOutput } from './ui/output.js'
 import type { QrMode } from './ui/qr.js'
@@ -385,9 +386,7 @@ export async function runCli(
   })
 
   if (wantsJson && normalArgs.includes('--version')) {
-    process.stdout.write(
-      `${JSON.stringify({ schemaVersion: 1, type: 'version', version: packageJson.version })}\n`,
-    )
+    writeJsonEvent({ type: 'version', version: packageJson.version })
   } else
     await runMain(main, {
       rawArgs: parsedArgs,
@@ -404,9 +403,7 @@ export async function runCli(
           '  --version                Show the version\n' +
           '  Flags go before --. Docs: https://github.com/radityama/peek\n'
         if (wantsJson) {
-          process.stdout.write(
-            `${JSON.stringify({ schemaVersion: 1, type: 'help', text: help })}\n`,
-          )
+          writeJsonEvent({ type: 'help', text: help })
         } else process.stdout.write(help)
       },
     })
