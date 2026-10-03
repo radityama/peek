@@ -23,7 +23,8 @@ flowchart TD
 
 | Module | Responsibility |
 | --- | --- |
-| `src/cli.ts` | Citty flags, alias, top-level errors, and UI wiring. |
+| `src/cli.ts` | Thin executable entry invoking the CLI command. |
+| `src/cli-command.ts` | Citty flags, alias, top-level errors, and UI composition. |
 | `src/core/project.ts` | Read local `package.json` and lockfiles only. |
 | `src/core/framework.ts` | Identify a framework hint from local package metadata. |
 | `src/core/config.ts` | Load and validate optional TypeScript project config. |
