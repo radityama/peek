@@ -108,6 +108,8 @@ export async function runCli(
       if (output instanceof TerminalOutput)
         output.updateAvailable(current, latest)
     })
+    let primary: { error: unknown } | undefined
+    let rendered: { error: unknown } | undefined
     lifecycle.installSignals()
     try {
       const unknownFlags = Object.keys(args).filter(
@@ -284,6 +286,8 @@ export async function runCli(
           originHostHeader:
             args['host-header'] === 'localhost' ? 'localhost' : undefined,
         })
+        await lifecycle.setProvider(provider)
+        lifecycle.signal.throwIfAborted()
         output.success('Tunnel engine ready')
       }
       await runPeek({
@@ -333,20 +337,40 @@ export async function runCli(
           ? { onPreviewCheckComplete: () => lifecycle.requestStop() }
           : {}),
       })
-      if (lifecycle.signalExitCode !== undefined)
-        process.exitCode = lifecycle.signalExitCode
     } catch (error) {
-      if (lifecycle.wasRequested) {
-        process.exitCode = lifecycle.signalExitCode ?? 130
-      } else {
+      const cancelled =
+        lifecycle.signal.aborted &&
+        (error === lifecycle.signal.reason ||
+          (lifecycle.wasRequested &&
+            error instanceof Error &&
+            error.name === 'AbortError'))
+      if (
+        !cancelled ||
+        (error instanceof PeekError && error.code === 'PROCESS_CLEANUP_ERROR')
+      ) {
+        primary = { error }
         output.error(formatError(error, args.verbose === true))
-        process.exitCode =
-          error instanceof PeekError && error.code === 'USAGE_ERROR' ? 2 : 1
+        rendered = { error }
       }
     } finally {
       updateNotice.stop()
       updateController.abort()
-      await lifecycle.stop()
+      const cleanup = await lifecycle.stop(
+        primary ? { kind: 'failed', error: primary.error } : undefined,
+      )
+      if (cleanup.error && cleanup.error !== rendered?.error) {
+        output.error(formatError(cleanup.error, args.verbose === true))
+      }
+      if (lifecycle.signalExitCode !== undefined) {
+        process.exitCode = lifecycle.signalExitCode
+      } else if (
+        primary?.error instanceof PeekError &&
+        primary.error.code === 'USAGE_ERROR'
+      ) {
+        process.exitCode = 2
+      } else if (primary || cleanup.error) {
+        process.exitCode = 1
+      }
     }
   }
 

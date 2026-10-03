@@ -84,13 +84,18 @@ export async function runPeek(options: RunOptions): Promise<void> {
   const { cwd, command, explicitPort, lifecycle, provider } = options
   const signal = lifecycle.signal
   let previewController: AbortController | undefined
+  let primary: { error: unknown } | undefined
   try {
+    if (provider) await lifecycle.setProvider(provider)
     signal.throwIfAborted()
     const baselineOpen = await captureBaselinePorts(explicitPort)
     signal.throwIfAborted()
+    lifecycle.advance('starting-server')
     options.onState?.('starting')
+    signal.throwIfAborted()
     const dev = spawnDev(command, cwd)
-    lifecycle.setDev(dev)
+    await lifecycle.setDev(dev)
+    signal.throwIfAborted()
     const signals = new PortSignals()
     dev.stdout.on('data', (chunk: Buffer | string) => {
       const text = chunk.toString()
@@ -109,7 +114,9 @@ export async function runPeek(options: RunOptions): Promise<void> {
       devExit = exit
     })
 
+    lifecycle.advance('discovering-server')
     options.onState?.('waiting')
+    signal.throwIfAborted()
     let port: number
     try {
       port = await waitForServer({
@@ -151,13 +158,18 @@ export async function runPeek(options: RunOptions): Promise<void> {
       throw error
     }
     signal.throwIfAborted()
+    lifecycle.advance('server-ready')
     options.onServerReady?.(port)
+    signal.throwIfAborted()
     if (options.lan) {
       const address = await (options.lanAddressSelector ?? selectLanAddress)(
         port,
         signal,
       )
+      signal.throwIfAborted()
+      lifecycle.advance('ready')
       options.onLanReady?.(`http://${address}:${port}`)
+      signal.throwIfAborted()
       const outcome = await waitForOutcome(
         new Promise<never>(() => {}),
         dev.exit,
@@ -168,14 +180,18 @@ export async function runPeek(options: RunOptions): Promise<void> {
     }
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
+    lifecycle.advance('tunnel-connecting')
     options.onState?.('connecting')
-    lifecycle.setProvider(provider)
+    signal.throwIfAborted()
     const reportReady = (connection: { url: string }): void => {
+      signal.throwIfAborted()
+      lifecycle.advance('ready')
       const localUrl = `http://localhost:${port}`
       options.onReady?.({
         localUrl,
         publicUrl: connection.url,
       })
+      signal.throwIfAborted()
       if (options.framework) {
         previewController?.abort()
         previewController = new AbortController()
@@ -191,7 +207,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
         ).then(
           (findings) => {
             if (previewSignal.aborted) return
-            for (const finding of findings) options.onPreviewFinding?.(finding)
+            for (const finding of findings) {
+              if (previewSignal.aborted) return
+              options.onPreviewFinding?.(finding)
+            }
+            if (previewSignal.aborted) return
             options.onPreviewCheckComplete?.()
           },
           () => {
@@ -218,6 +238,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           )
           if (waited.kind === 'cancel') return
           if (waited.kind === 'dev') throw serverExit(waited.exit)
+          signal.throwIfAborted()
         }
         signal.throwIfAborted()
         const disconnected = await waitForOutcome(
@@ -227,6 +248,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         )
         if (disconnected.kind === 'cancel') return
         if (disconnected.kind === 'dev') throw serverExit(disconnected.exit)
+        signal.throwIfAborted()
         try {
           const connected = await waitForOutcome(
             provider.connect({ port, signal }),
@@ -235,6 +257,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           )
           if (connected.kind === 'cancel') return
           if (connected.kind === 'dev') throw serverExit(connected.exit)
+          signal.throwIfAborted()
           connection = connected.value
         } catch (error) {
           if (
@@ -250,24 +273,46 @@ export async function runPeek(options: RunOptions): Promise<void> {
             failureCount,
             error instanceof Error ? error.message : String(error),
           )
+          signal.throwIfAborted()
         }
       }
       reportReady(connection)
       const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
       if (outcome.kind === 'cancel') return
       if (outcome.kind === 'dev') throw serverExit(outcome.exit)
+      signal.throwIfAborted()
       options.onTunnelDrop?.(
         `Tunnel exited with code ${outcome.value.exitCode ?? 'unknown'}.`,
       )
+      signal.throwIfAborted()
       previewController?.abort()
+      lifecycle.advance('reconnecting')
       options.onState?.('reconnecting')
+      signal.throwIfAborted()
       retryCount++
       connection = undefined
     }
   } catch (error) {
-    if (!lifecycle.wasRequested) throw error
+    const cancelled =
+      signal.aborted &&
+      (error === signal.reason ||
+        (lifecycle.wasRequested &&
+          error instanceof Error &&
+          error.name === 'AbortError'))
+    if (
+      !cancelled ||
+      (error instanceof PeekError && error.code === 'PROCESS_CLEANUP_ERROR')
+    ) {
+      primary = { error }
+    }
   } finally {
     previewController?.abort()
-    await lifecycle.stop()
+    const cleanup = await lifecycle.stop(
+      primary ? { kind: 'failed', error: primary.error } : undefined,
+    )
+    // biome-ignore lint/correctness/noUnsafeFinally: The original failure must survive cleanup.
+    if (primary) throw primary.error
+    // biome-ignore lint/correctness/noUnsafeFinally: Cleanup failure must reject a successful or cancelled return.
+    if (cleanup.error) throw cleanup.error
   }
 }
