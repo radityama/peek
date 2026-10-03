@@ -29,13 +29,60 @@ the directory. It does not start a public tunnel.
 
 ## Structure
 
-`src/cli.ts` parses arguments and presents errors. `src/core` discovers the
-project, runs the dev process, detects and verifies its port, and owns process
-cleanup. `src/cloudflared` downloads and verifies the pinned binary. `src/tunnel`
+`src/cli.ts` is the thin executable entry; `src/cli-command.ts` parses arguments,
+composes dependencies and presents errors. `src/core` discovers the project,
+runs the dev process, detects and verifies its port, and owns process cleanup.
+`src/cloudflared` downloads and verifies the pinned binary. `src/tunnel`
 contains the provider contract and Cloudflare implementation. `src/ui` formats
 terminal output. `tests/unit` covers parsers and decisions; `tests/integration`
 uses tiny fake server and tunnel processes to test readiness and lifecycle.
 See [architecture](ARCHITECTURE.md) and [decisions](DECISIONS.md) for details.
+
+## CLI integration tests
+
+Vitest builds the shipped `dist/cli.js` and a separate injected entry once per
+run. The shipped-entry tests cover commands such as help, version, doctor and
+validation. Preview tests run the same CLI command body with a test provider
+that starts a real loopback HTTP/WebSocket transport process. The injected
+entry, provider, transport, fixtures and helpers stay outside the npm package.
+
+Run the focused CLI checks with:
+
+```sh
+pnpm exec vitest run tests/integration/cli.test.ts tests/integration/cli-preview.test.ts tests/integration/cli-process.test.ts tests/integration/cli-websocket.test.ts tests/unit/lan.test.ts
+```
+
+These tests run a normal npm dev script, the default terminal output and JSON
+output, explicit server commands, port rejection, Host rejection and the
+existing localhost Host override. They also check startup crashes, recovery
+from an initial connection failure, and replacement of a real transport after
+the test terminates its recorded PID. Recovery must preserve the original dev
+PID and verified port. WebSocket acceptance verifies the handshake and an
+echoed text message, including partial frame reads and bytes sent with the
+HTTP upgrade. A successful HTTP 101 alone is insufficient.
+
+The journal records process IDs and listening ports independently of CLI
+output. Tests assert those processes stopped and ports closed before fallback
+teardown can force cleanup. Temporary projects use `node ./dev.mjs` in their
+npm script; the wrapper imports the fixture by file URL so paths with spaces
+work without a leading quoted executable in Windows `cmd.exe`.
+
+LAN success uses the machine's actual private IPv4 interface and binds the
+fixture to `0.0.0.0`. It explicitly skips with a reason when the machine has
+zero or multiple private addresses. A loopback-only subprocess still checks
+LAN failure without tunnel preparation; unit tests deterministically check
+missing and ambiguous addresses.
+
+On POSIX, lifecycle tests send real SIGINT and SIGTERM and verify exit codes
+130 and 143. On Windows, the injected entry receives a labelled IPC command
+that invokes the signal handler; the resulting dev process and descendant
+cleanup still runs through real Execa processes. This does not exercise native
+Windows console Ctrl+C, which needs a separate manual stress test.
+
+The local transport proves forwarding and CLI recovery behavior. It does not
+prove Cloudflare availability, TLS, public hostname handling, or framework
+HMR compatibility. Host rejection uses a synthetic nonlocal Host value, and
+the WebSocket echo server is a small fixture rather than a framework install.
 
 ## Try the CLI locally
 
@@ -55,6 +102,18 @@ URL from a second device or `curl`, and press Ctrl+C. Check that the dev server
 and `cloudflared` have exited. The first run downloads the pinned binary to
 `~/.peek/bin`; subsequent runs reuse it. Do not share a project containing
 private data unless its HTTP routes protect that data.
+
+You can also run the existing opt-in checks from a disposable dev project:
+
+```sh
+node /path/to/peek/dist/cli.js doctor
+node /path/to/peek/dist/cli.js doctor --live
+node /path/to/peek/dist/cli.js --json
+```
+
+`doctor --live` and the JSON preview use the real Cloudflare provider and may
+download the verified binary. The live doctor stops after its preview checks;
+stop the JSON preview with Ctrl+C and inspect child cleanup as above.
 
 ## Release
 

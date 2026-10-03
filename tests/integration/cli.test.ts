@@ -1,19 +1,12 @@
 import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { beforeAll, expect, it } from 'vitest'
+import { expect, inject, it } from 'vitest'
 import packageJson from '../../package.json' with { type: 'json' }
 
 const execFileAsync = promisify(execFile)
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const cliFile = fileURLToPath(new URL('../../dist/cli.js', import.meta.url))
-
-beforeAll(async () => {
-  await execFileAsync('pnpm', ['build'], {
-    cwd: root,
-    shell: process.platform === 'win32',
-  })
-})
 
 async function run(args: string[]): Promise<{ code: number; output: string }> {
   try {
@@ -48,6 +41,24 @@ it('shows the package version', async () => {
   const result = await run(['--version'])
   expect(result.code).toBe(0)
   expect(result.output).toContain(packageJson.version)
+})
+
+it('shows the JSON version through the injected entry without preparing a provider', async () => {
+  const entry = inject('cliTestEntry')
+  const result = await execFileAsync(
+    process.execPath,
+    [entry, '--json', '--version'],
+    {
+      cwd: root,
+      timeout: 10_000,
+    },
+  )
+  expect(result.stderr).toBe('')
+  expect(JSON.parse(result.stdout)).toEqual({
+    schemaVersion: 1,
+    type: 'version',
+    version: packageJson.version,
+  })
 })
 
 it('keeps help and version machine-readable with --json', async () => {

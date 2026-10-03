@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { privateLanAddresses, selectLanAddress } from '../../src/core/lan.js'
 
 it('keeps only private external IPv4 addresses', () => {
@@ -23,4 +23,15 @@ it('rejects ambiguous usable private interfaces', async () => {
       async () => true,
     ),
   ).rejects.toThrow('multiple usable LAN addresses')
+})
+
+it('rejects a missing private interface before probing any port', async () => {
+  const probe = vi.fn(async () => true)
+  await expect(
+    selectLanAddress(3000, new AbortController().signal, [], probe),
+  ).rejects.toMatchObject({
+    code: 'SERVER_DETECTION_ERROR',
+    message: 'Peek found no private IPv4 address for LAN mode.',
+  })
+  expect(probe).not.toHaveBeenCalled()
 })
