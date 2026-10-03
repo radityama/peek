@@ -1,7 +1,7 @@
 # v0.2 JSON Contract Hardening
 
-Status: typed contract and stream-test approach approved in conversation;
-written spec awaiting review.
+Status: typed contract, stream-test approach, and written spec approved in
+conversation. Implementation may proceed.
 
 Baseline: `aaae639`, package `@usepeek/peek` 0.2.2. Integration harness PR #10
 and lifecycle PR #11 are merged. Branch: `test/v02-json-contract`.
