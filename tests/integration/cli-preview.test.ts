@@ -87,9 +87,12 @@ it('shows and serves the default terminal preview with no CLI flags', async () =
   handles.push(cli)
   const publicUrl = (): string | undefined =>
     cli.stdout.match(/^Public\s+(http:\/\/127\.0\.0\.1:\d+)\s*$/m)?.[1]
-  await expect.poll(publicUrl, { timeout: 12_000 }).toBeDefined()
+  // The URL block and stop hint can arrive in separate stdout chunks.
+  await expect
+    .poll(() => cli.stdout, { timeout: 12_000 })
+    .toContain('Press Ctrl+C to stop')
+  expect(publicUrl()).toBeDefined()
   const url = new URL(publicUrl() ?? '')
-  expect(cli.stdout).toContain('Press Ctrl+C to stop')
   expect(
     await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),
   ).toBe('peek fixture')
