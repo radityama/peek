@@ -17,7 +17,6 @@ interface Transport {
   child: ChildProcess
   exited: Promise<TunnelExit>
   closed: boolean
-  dropTimer?: ReturnType<typeof setTimeout>
 }
 
 export function prepareFixtureProvider(
@@ -124,12 +123,6 @@ class FixtureProvider implements TunnelProvider {
         child.once('close', onClose)
         if (signal.aborted) onAbort()
       })
-      if (
-        process.env.PEEK_TEST_PROVIDER_MODE === 'drop-once' &&
-        attempt === 1
-      ) {
-        state.dropTimer = setTimeout(() => child.kill('SIGTERM'), 1200)
-      }
       return { url: `http://127.0.0.1:${listener}`, exited }
     } catch (error) {
       await this.disconnect()
@@ -153,7 +146,6 @@ class FixtureProvider implements TunnelProvider {
   }
 
   private async stop(state: Transport): Promise<void> {
-    clearTimeout(state.dropTimer)
     if (state.closed) return
     state.child.kill('SIGTERM')
     if (!(await settlesWithin(state.exited, 2000))) {

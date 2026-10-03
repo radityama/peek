@@ -5,7 +5,7 @@ import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { inject } from 'vitest'
 
 export interface CliEvent extends Record<string, unknown> {
@@ -28,7 +28,7 @@ export interface CliOptions {
   mode?: 'announced' | 'silent' | 'delayed' | 'crash' | 'tree' | 'blocked-host'
   port?: number
   bind?: '127.0.0.1' | '0.0.0.0'
-  providerMode?: 'normal' | 'fail-once' | 'drop-once'
+  providerMode?: 'normal' | 'fail-once'
   framework?: 'node' | 'vite'
   env?: NodeJS.ProcessEnv
   timeoutMs?: number
@@ -65,16 +65,6 @@ const shippedEntry = fileURLToPath(
   new URL('../../dist/cli.js', import.meta.url),
 )
 
-function scriptQuote(value: string): string {
-  if (process.platform === 'win32') {
-    // These paths come from the OS, but cmd still expands percent variables in quotes.
-    if (/["%\r\n]/.test(value))
-      throw new Error('Unsupported path for npm fixture script')
-    return `"${value}"`
-  }
-  return `'${value.replaceAll("'", "'\\''")}'`
-}
-
 export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
   const directory = await mkdtemp(join(tmpdir(), 'peek cli-'))
   const journal = join(directory, 'journal.jsonl')
@@ -82,6 +72,11 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
   let childClosed: Promise<void> | undefined
   try {
     await writeFile(journal, '')
+    // A leading quoted executable is parsed differently by npm's Windows command shell.
+    await writeFile(
+      join(directory, 'dev.mjs'),
+      `import ${JSON.stringify(pathToFileURL(fixture).href)}\n`,
+    )
     await writeFile(
       join(directory, 'package.json'),
       JSON.stringify({
@@ -89,7 +84,7 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
         private: true,
         packageManager: 'npm',
         scripts: {
-          dev: `${scriptQuote(process.execPath)} ${scriptQuote(fixture)}`,
+          dev: 'node ./dev.mjs',
         },
         ...(options.framework === 'vite'
           ? { devDependencies: { vite: '*' } }

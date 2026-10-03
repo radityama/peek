@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
+import { privateLanAddresses } from '../../src/core/lan.js'
 import { type CliHandle, startCli } from '../helpers/cli.js'
 
 const handles: CliHandle[] = []
@@ -79,6 +80,130 @@ it('runs an injected preview from a normal project dev script', async () => {
   handles.push(cli)
   await assertPreview(cli)
   await stop(cli)
+})
+
+it('shows and serves the default terminal preview with no CLI flags', async () => {
+  const cli = await startCli({ args: [], project: true })
+  handles.push(cli)
+  const publicUrl = (): string | undefined =>
+    cli.stdout.match(/^Public\s+(http:\/\/127\.0\.0\.1:\d+)\s*$/m)?.[1]
+  await expect.poll(publicUrl, { timeout: 12_000 }).toBeDefined()
+  const url = new URL(publicUrl() ?? '')
+  expect(cli.stdout).toContain('Press Ctrl+C to stop')
+  expect(
+    await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),
+  ).toBe('peek fixture')
+  await stop(cli)
+})
+
+it('keeps JSON stdout pure and preserves both child output streams', async () => {
+  const cli = await startCli({ project: true })
+  handles.push(cli)
+  await assertPreview(cli)
+  await stop(cli)
+  const events = cli.stdout
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line))
+  expect(events.length).toBeGreaterThan(0)
+  for (const event of events) {
+    expect(event.schemaVersion).toBe(1)
+    expect(typeof event.type).toBe('string')
+    expect(event.type.length).toBeGreaterThan(0)
+  }
+  const childOutput = events.filter((event) => event.type === 'child-output')
+  const stdout = childOutput
+    .filter((event) => event.stream === 'stdout')
+    .map((event) => event.content)
+    .join('')
+  const stderr = childOutput
+    .filter((event) => event.stream === 'stderr')
+    .map((event) => event.content)
+    .join('')
+  expect(stdout).toContain('fixture stdout')
+  expect(stdout).not.toContain('fixture stderr')
+  expect(stderr).toContain('fixture stderr')
+  expect(stderr).not.toContain('fixture stdout')
+  expect(cli.stderr).toBe('')
+})
+
+it('serves a LAN preview through the actual private interface without a provider', async (context) => {
+  const addresses = privateLanAddresses()
+  if (addresses.length !== 1)
+    context.skip(
+      `LAN success needs exactly one private external IPv4 address; found ${addresses.length}: ${addresses.join(', ') || 'none'}`,
+    )
+  const cli = await startCli({ args: ['--json', '--lan'], bind: '0.0.0.0' })
+  handles.push(cli)
+  const ready = await cli.waitForEvent('lan-ready')
+  const url = new URL(String(ready.url))
+  expect(url.hostname).toBe(addresses[0])
+  const records = await cli.readJournal()
+  expect(Number(url.port)).toBe(
+    records.find((record) => record.role === 'dev' && record.port)?.port,
+  )
+  expect(
+    await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),
+  ).toBe('peek fixture')
+  await stop(cli)
+  expect(
+    (await cli.readJournal()).some((record) =>
+      ['preparation', 'connection', 'transport'].includes(record.role),
+    ),
+  ).toBe(false)
+})
+
+it('fails LAN selection for a loopback-only server without preparing a provider', async () => {
+  const cli = await startCli({ args: ['--json', '--lan'] })
+  handles.push(cli)
+  const error = await cli.waitForEvent('error')
+  expect(error.message).toMatch(
+    /no private IPv4 address|unavailable from the local network/,
+  )
+  expect((await cli.waitForExit()).code).toBe(1)
+  expect(cli.events.some((event) => event.type === 'lan-ready')).toBe(false)
+  expect(
+    (await cli.readJournal()).some((record) =>
+      ['preparation', 'connection', 'transport'].includes(record.role),
+    ),
+  ).toBe(false)
+  await cli.assertResourcesStopped()
+})
+
+it('reports a real forwarded Host rejection without an HMR failure', async () => {
+  const cli = await startCli({ mode: 'blocked-host', framework: 'vite' })
+  handles.push(cli)
+  const ready = await cli.waitForEvent('ready')
+  const response = await fetch(String(ready.publicUrl), {
+    signal: AbortSignal.timeout(3000),
+  })
+  expect(response.status).toBe(403)
+  expect(await response.text()).toContain('This host is not allowed')
+  const warning = await cli.waitForEvent(
+    'warning',
+    (event) => event.kind === 'blocked-host',
+  )
+  expect(warning.message).toContain('--host-header localhost')
+  await stop(cli)
+  expect(cli.events.some((event) => event.kind === 'hmr-failed')).toBe(false)
+  expect(cli.stderr).toBe('')
+})
+
+it('passes the existing localhost Host override to the real transport', async () => {
+  const cli = await startCli({
+    args: ['--json', '--host-header', 'localhost'],
+    mode: 'blocked-host',
+    framework: 'vite',
+  })
+  handles.push(cli)
+  await assertPreview(cli)
+  expect(
+    (await cli.readJournal()).find((record) => record.role === 'preparation')
+      ?.originHostHeader,
+  ).toBe('localhost')
+  await stop(cli)
+  expect(cli.events.some((event) => event.kind === 'blocked-host')).toBe(false)
+  expect(cli.stderr).toBe('')
 })
 
 it.each(['announced', 'silent', 'delayed'] as const)(

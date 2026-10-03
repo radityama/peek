@@ -88,7 +88,12 @@ server.on('upgrade', (request, socket, head) => {
         socket.end(frame)
         return
       }
-      socket.write(frame)
+      if (process.env.PEEK_TEST_WS_FRAGMENT === '1') {
+        socket.write(frame.subarray(0, 1))
+        setTimeout(() => {
+          if (!socket.destroyed) socket.write(frame.subarray(1))
+        }, 20)
+      } else socket.write(frame)
     }
   }
   socket.on('data', consume)
