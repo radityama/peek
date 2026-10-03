@@ -104,7 +104,7 @@ await runCli(process.argv.slice(2), {
 ```
 
 - [ ] Configure Vitest `globalSetup: ['tests/setup.ts']`. Setup uses tsdown's programmatic `build` to build the normal config once and an ESM Node 22 test entry with declarations disabled. The injected artifact goes into a unique temporary directory under `node_modules/.cache`, allowing external dependencies to resolve and keeping it outside `dist`. Provide its absolute path as `cliTestEntry` through Vitest's typed `ProvidedContext`. Teardown removes only that unique directory. Remove the existing per-file `beforeAll` build.
-- [ ] Verify exact commands: `pnpm test -- tests/integration/cli.test.ts` (existing and injected version tests pass), `pnpm typecheck` (no errors), `pnpm build` (only production entries), `pnpm pack:check` (no test entry). Format changed TypeScript with Biome. Review the move for behavioral changes.
+- [ ] Verify exact commands: `pnpm exec vitest run tests/integration/cli.test.ts` (existing and injected version tests pass), `pnpm typecheck` (no errors), `pnpm build` (only production entries), `pnpm pack:check` (no test entry). Format changed TypeScript with Biome. Review the move for behavioral changes.
 - [ ] Commit: `refactor: add internal CLI composition seam`.
 
 ## Task 2: Real process harness and startup coverage
@@ -129,7 +129,7 @@ await cli.assertResourcesStopped()
 - [ ] Implement the test provider with the existing `TunnelProvider` interface. Journal preparation and every connection. Launch a real transport child to forward only the verified dev port. Return its local HTTP URL plus an exit promise. Disconnect awaits bounded TERM/KILL cleanup; force disconnect terminates the child. Startup-failure and one-drop modes operate once per fixture session and journal the attempt. Do not add a runtime provider option.
 - [ ] The transport forwards HTTP method/path/body and headers to `127.0.0.1:<verified port>`, with an optional localhost Host override. Forward raw upgrade bytes and both `head` buffers. Track open sockets, destroy them during shutdown, and report the listener through IPC rather than CLI stdout.
 - [ ] Add announced, silent, delayed, explicit command, and normal dev-script startup cases. For explicit ports, acquire an ephemeral port and release it before spawning; for occupied ports retain the unrelated listener until the failure assertion. Assert selected port equals the journal and provider target; assert the occupied unrelated listener is never tunneled. Check invalid port exits with the current code and no provider preparation. Check malformed stdout is surfaced by the harness rather than hidden.
-- [ ] Verify `pnpm test -- tests/integration/cli-preview.test.ts tests/integration/cli.test.ts`, `pnpm typecheck`, and changed-file Biome checks. Expect successful real HTTP responses and no leftover journalled PIDs. Commit `test: add real CLI preview integration harness`.
+- [ ] Verify `pnpm exec vitest run tests/integration/cli-preview.test.ts tests/integration/cli.test.ts`, `pnpm typecheck`, and changed-file Biome checks. Expect successful real HTTP responses and no leftover journalled PIDs. Commit `test: add real CLI preview integration harness`.
 
 ## Task 3: Lifecycle, JSON, LAN and WebSocket acceptance
 
