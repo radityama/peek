@@ -2,6 +2,7 @@ import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
 import { type CleanupResult, Lifecycle } from '../../src/core/lifecycle.js'
 import type { DevProcess } from '../../src/core/process.js'
+import { CloudflareProvider } from '../../src/tunnel/cloudflare.js'
 import type { TunnelProvider } from '../../src/tunnel/types.js'
 
 function provider(
@@ -219,6 +220,59 @@ describe('Lifecycle', () => {
       expect(vi.getTimerCount()).toBe(0)
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('reports unconfirmed Cloudflare exit and still cleans dev and signal listeners', async () => {
+    vi.useFakeTimers()
+    const lifecycle = new Lifecycle()
+    const intListeners = process.listeners('SIGINT')
+    const termListeners = process.listeners('SIGTERM')
+    try {
+      const tunnelKill = vi.fn()
+      const tunnel = new CloudflareProvider('/tmp/cloudflared', () => ({
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        exit: new Promise(() => {}),
+        kill: tunnelKill,
+      }))
+      const server = dev()
+      await lifecycle.setProvider(tunnel)
+      await lifecycle.setDev(server)
+      lifecycle.installSignals()
+      const connecting = expect(
+        tunnel.connect({ port: 3000, signal: lifecycle.signal }),
+      ).rejects.toThrow('Peek was stopped')
+      const stopped = lifecycle.stop()
+      await connecting
+      await vi.advanceTimersByTimeAsync(3999)
+      expect(server.kill).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      const result = await stopped
+      expect(result.error?.code).toBe('PROCESS_CLEANUP_ERROR')
+      expect(result.error?.message).toMatch(/Tunnel cleanup failed to confirm/)
+      expect(result.error?.hint).toMatch(/remaining dev or tunnel processes/)
+      expect(tunnelKill.mock.calls).toEqual([
+        ['SIGTERM'],
+        ['SIGTERM'],
+        ['SIGKILL'],
+        ['SIGKILL'],
+      ])
+      expect(server.kill).toHaveBeenCalledWith('SIGTERM')
+      expect(lifecycle.phase).toBe('stopped')
+      expect(lifecycle.stop()).toBe(stopped)
+      expect(process.listeners('SIGINT')).toEqual(intListeners)
+      expect(process.listeners('SIGTERM')).toEqual(termListeners)
+      expect(vi.getTimerCount()).toBe(0)
+      tunnel.forceDisconnect()
+      expect(tunnelKill).toHaveBeenCalledTimes(5)
+    } finally {
+      try {
+        await vi.advanceTimersByTimeAsync(10_000)
+        await lifecycle.stop()
+      } finally {
+        vi.useRealTimers()
+      }
     }
   })
 
