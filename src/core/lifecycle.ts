@@ -129,11 +129,13 @@ export class Lifecycle {
   }
 
   requestStop(exitCode?: number): void {
+    if (exitCode !== undefined && this.signalExitCode === undefined) {
+      this.signalExitCode = exitCode
+    }
     if (this.stopPromise) {
       if (!this.isStopped) this.forceStop()
       return
     }
-    this.signalExitCode = exitCode
     void this.stop({ kind: 'requested' })
   }
 

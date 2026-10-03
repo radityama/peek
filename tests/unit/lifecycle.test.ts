@@ -287,6 +287,63 @@ describe('Lifecycle', () => {
     expect(lifecycle.signalExitCode).toBeUndefined()
   })
 
+  it.each([
+    ['failed', 'SIGINT', 130],
+    ['failed', 'SIGTERM', 143],
+    ['completed', 'SIGINT', 130],
+    ['completed', 'SIGTERM', 143],
+    ['requested', 'SIGINT', 130],
+    ['requested', 'SIGTERM', 143],
+  ] as const)(
+    'records the first %s-cleanup signal %s and retains its exit code',
+    async (kind, signal, exitCode) => {
+      vi.useFakeTimers()
+      const lifecycle = new Lifecycle()
+      const intListeners = process.listeners('SIGINT')
+      const termListeners = process.listeners('SIGTERM')
+      try {
+        lifecycle.installSignals()
+        const onInt = process
+          .listeners('SIGINT')
+          .find((listener) => !intListeners.includes(listener))
+        const onTerm = process
+          .listeners('SIGTERM')
+          .find((listener) => !termListeners.includes(listener))
+        await lifecycle.setProvider(provider(() => new Promise(() => {})))
+        if (kind === 'requested') lifecycle.requestStop()
+        else if (kind === 'failed')
+          lifecycle.stop({ kind, error: new Error('Original failure') })
+        else lifecycle.stop({ kind })
+        const stopped = lifecycle.stop()
+        const outcome = lifecycle.outcome
+        await vi.advanceTimersByTimeAsync(10)
+        expect(lifecycle.phase).toBe('stopping')
+        expect(lifecycle.signalExitCode).toBeUndefined()
+        if (signal === 'SIGINT') onInt?.(signal)
+        else onTerm?.(signal)
+        expect(lifecycle.signalExitCode).toBe(exitCode)
+        if (signal === 'SIGINT') onTerm?.('SIGTERM')
+        else onInt?.('SIGINT')
+        expect(lifecycle.signalExitCode).toBe(exitCode)
+        expect(lifecycle.outcome).toBe(outcome)
+        expect(lifecycle.stop()).toBe(stopped)
+        await vi.advanceTimersByTimeAsync(1000)
+        expect((await stopped).error?.code).toBe('PROCESS_CLEANUP_ERROR')
+        expect(lifecycle.phase).toBe('stopped')
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        try {
+          await vi.advanceTimersByTimeAsync(10_000)
+          await lifecycle.stop()
+          expect(process.listeners('SIGINT')).toEqual(intListeners)
+          expect(process.listeners('SIGTERM')).toEqual(termListeners)
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    },
+  )
+
   it('cleans registration during stopping without acquiring the resource', async () => {
     const lifecycle = new Lifecycle()
     const stopped = lifecycle.stop()
