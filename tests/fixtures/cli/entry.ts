@@ -1,5 +1,6 @@
 import { runCli } from '../../../src/cli-command.js'
 import { runDoctor } from '../../../src/core/doctor.js'
+import { runPeek } from '../../../src/core/run.js'
 import { prepareFixtureProvider } from './provider.js'
 
 const onMessage = (message: unknown): void => {
@@ -20,6 +21,13 @@ try {
     process.stdout.write('fixture non-JSON stdout\n')
   await runCli(process.argv.slice(2), {
     prepareProvider: async (options) => prepareFixtureProvider(options),
+    run: (options) => {
+      const retryMs = process.env.PEEK_TEST_RETRY_MS
+      return runPeek({
+        ...options,
+        ...(retryMs === undefined ? {} : { retryDelaysMs: [Number(retryMs)] }),
+      })
+    },
     doctor: (options) =>
       runDoctor({
         ...options,

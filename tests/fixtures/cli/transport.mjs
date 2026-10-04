@@ -79,6 +79,10 @@ journal({
   targetPort,
   attempt: Number(process.env.PEEK_TEST_ATTEMPT),
 })
+if (process.env.PEEK_TEST_PROVIDER_MODE === 'always-fail') {
+  console.error('Fixture tunnel failed before listening')
+  process.exit(11)
+}
 server.listen(0, '127.0.0.1', () => {
   const port = server.address().port
   journal({

@@ -43,6 +43,7 @@ export interface CliOptions {
   providerMode?:
     | 'normal'
     | 'fail-once'
+    | 'always-fail'
     | 'connect-pending'
     | 'reconnect-pending'
     | 'disconnect-on-force'

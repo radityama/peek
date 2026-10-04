@@ -114,6 +114,26 @@ prove Cloudflare availability, TLS, public hostname handling, or framework
 HMR compatibility. Host rejection uses a synthetic nonlocal Host value, and
 the WebSocket echo server is a small fixture rather than a framework install.
 
+### Tunnel recovery tests
+
+```sh
+pnpm exec vitest run tests/unit/reconnect.test.ts tests/unit/cloudflare.test.ts tests/integration/lifecycle.test.ts tests/integration/cli-reconnect.test.ts
+```
+
+Policy tests cover the eight-event budget, mixed failures/drops, delay sequence
+and exact 29,999/30,000 ms reset boundary. Core tests use actual Node dev and
+fake-tunnel processes with injected elapsed time; they verify exhaustion and
+recovery without replacing the dev process. CLI subprocess tests use short
+test-only retry delays and a real transport that exits before readiness.
+They verify human/JSON exhaustion, eight HTTP-capable sessions, backoff
+cancellation and dev exit, and assert recorded PIDs/ports stopped before
+fallback cleanup. Cloudflare adapter tests cover overlapping connect,
+reentrant/shared disconnect, startup cancellation/timeout and listener disposal.
+
+Windows cases invoke the labelled IPC signal handler and exercise real
+process cleanup. They do not claim native console Ctrl+C. These deterministic
+checks do not require a public Cloudflare connection.
+
 ## JSON contract tests
 
 Run the focused contract checks with:

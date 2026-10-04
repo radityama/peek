@@ -26,6 +26,7 @@ import { errorExitCode, formatError, PeekError } from './utils/errors.js'
 export interface CliDependencies {
   prepareProvider(options: ProviderPreparation): Promise<TunnelProvider>
   doctor?: typeof runDoctor
+  run?: typeof runPeek
 }
 
 export async function runCli(
@@ -266,7 +267,7 @@ export async function runCli(
         lifecycle.signal.throwIfAborted()
         output.success('Tunnel engine ready')
       }
-      await runPeek({
+      await (dependencies?.run ?? runPeek)({
         cwd: process.cwd(),
         command,
         ...(explicitPort === undefined ? {} : { explicitPort }),
