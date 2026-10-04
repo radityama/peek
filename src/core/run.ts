@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { TunnelProvider } from '../tunnel/types.js'
 import { PeekError } from '../utils/errors.js'
@@ -11,6 +12,7 @@ import {
   type ProcessExit,
   spawnDev,
 } from './process.js'
+import { TunnelRecovery } from './reconnect.js'
 import {
   captureBaselinePorts,
   inspectChildListeningPorts,
@@ -40,9 +42,8 @@ export interface RunOptions {
   onReconnectFailure?: (attempt: number, message: string) => void
   onTunnelDrop?: (message: string) => void
   retryDelaysMs?: readonly number[]
+  now?: () => number
 }
-
-const DEFAULT_RETRY_DELAYS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
 
 async function waitForOutcome<T>(
   value: Promise<T>,
@@ -220,17 +221,15 @@ export async function runPeek(options: RunOptions): Promise<void> {
         )
       }
     }
-    const delays = options.retryDelaysMs?.length
-      ? options.retryDelaysMs
-      : DEFAULT_RETRY_DELAYS
-    let retryCount = 0
+    const recovery = new TunnelRecovery(options.retryDelaysMs)
+    const now = options.now ?? (() => performance.now())
+    let connectedAt = 0
     let failureCount = 0
     let connection: Awaited<ReturnType<TunnelProvider['connect']>> | undefined
     while (true) {
       while (!connection) {
-        if (retryCount > 0) {
-          const waitMs =
-            delays[Math.min(retryCount - 1, delays.length - 1)] ?? 30_000
+        const waitMs = recovery.delayMs
+        if (waitMs > 0) {
           const waited = await waitForOutcome(
             delay(waitMs, undefined, { signal }).catch(() => undefined),
             dev.exit,
@@ -262,6 +261,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (connected.kind === 'dev') throw serverExit(connected.exit)
           signal.throwIfAborted()
           connection = connected.value
+          connectedAt = now()
         } catch (error) {
           if (
             error instanceof PeekError &&
@@ -270,13 +270,13 @@ export async function runPeek(options: RunOptions): Promise<void> {
           )
             throw error
           signal.throwIfAborted()
-          retryCount++
           failureCount++
           options.onReconnectFailure?.(
             failureCount,
             error instanceof Error ? error.message : String(error),
           )
           signal.throwIfAborted()
+          recovery.failed(error)
         }
       }
       reportReady(connection)
@@ -284,6 +284,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       if (outcome.kind === 'cancel') return
       if (outcome.kind === 'dev') throw serverExit(outcome.exit)
       signal.throwIfAborted()
+      const sessionDurationMs = now() - connectedAt
       options.onTunnelDrop?.(
         `Tunnel exited with code ${outcome.value.exitCode ?? 'unknown'}.`,
       )
@@ -292,7 +293,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       lifecycle.advance('reconnecting')
       options.onState?.('reconnecting')
       signal.throwIfAborted()
-      retryCount++
+      recovery.dropped(sessionDurationMs)
       connection = undefined
     }
   } catch (error) {

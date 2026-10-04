@@ -67,6 +67,11 @@ server keeps running.
 Initial connection retries need not enter the reconnecting output state.
 See [the lifecycle retry policy](ARCHITECTURE.md#progress-and-ownership).
 
+Exhausted recovery emits the existing `error` event, then EOF and status 1 after
+cleanup. The final failed attempt still emits `reconnect-failed`; the final
+session drop still emits `tunnel-dropped` followed by `reconnecting`. No new event
+or field is added. See the linked lifecycle policy for counting and reset.
+
 There is no shutdown event. Observe EOF and process status. A primary failure
 followed by a distinct cleanup failure can emit two `error` events, in that
 order. A cleanup-only failure emits one. Do not treat the last event as a

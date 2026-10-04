@@ -114,10 +114,25 @@ existing output states and JSON fields rather than the internal phase names.
 
 Any active phase can enter `stopping`. Invalid progress transitions throw;
 cancellation checks after awaited work and callbacks prevent a late result
-from publishing readiness or starting preview probes after shutdown. Initial
-connection retries stay in `tunnel-connecting`; retries after a tunnel drop
-stay in `reconnecting`. Retry delays remain 1, 2, 4, 8, 16, then 30 seconds,
-capped at 30 seconds, with no finite retry limit or counter reset on success.
+from publishing readiness or starting preview probes after shutdown.
+
+Initial connection retries stay in `tunnel-connecting`; retries after a tunnel
+drop stay in `reconnecting`. A failed connection or resolved session exit counts
+once toward eight consecutive instability events. After event eight, Peek
+reports `TUNNEL_CONNECTION_ERROR` and stops the tunnel and dev server without
+another attempt. Delays after events one through seven are 1, 2, 4, 8, 16,
+30 and 30 seconds; the initial connection is immediate.
+
+A session lasting at least 30 seconds resets the event count, backoff and
+current-budget cause before its drop counts as the next budget's first event.
+Peek measures elapsed session time with a monotonic clock from connection
+resolution to observed exit, before drop and state callbacks run. It evaluates
+the reset at exit, without a separate timer. Short sessions do not reset the budget.
+Failed-connect warning numbers retain their separate lifetime count.
+The limit is a count rather than a fixed elapsed deadline: Cloudflare still
+allows 45 seconds per attempt. Cancellation or dev exit ends recovery
+immediately, including during a pending delay. Reconnect keeps the same dev
+process and selected target; it does not rediscover another port.
 
 Shutdown outcome is separate from progress: `completed`, `requested`, or
 `failed` with its primary error. The first SIGINT or SIGTERM status is retained
@@ -189,6 +204,15 @@ cleanup must also work when startup has not returned a session. `Lifecycle`
 registers the provider before dev startup; `runPeek` disconnects before every
 connect attempt. Reconnection preserves the dev process and verified target.
 The session does not own the dev server or decide retry timing.
+
+Cloudflare rejects connect while it owns an unconfirmed child or a pending
+disconnect. Concurrent disconnect calls share one teardown; failed teardown
+retains the child and permits a later disconnect attempt. Confirmed exit and
+settled teardown permit replacement. Stream data listeners remain active for
+diagnostics after readiness and are removed on resolved or rejected exit
+observation. Rejected observation, startup abort and timeout retain the force handle.
+Startup abort and timeout settle the rejection before invoking the kill hook,
+so synchronous output from that hook cannot create a session.
 
 Cloudflare output parsing, process flags and config diagnostics stay inside the
 tunnel implementation. Host-header compatibility remains the explicit
