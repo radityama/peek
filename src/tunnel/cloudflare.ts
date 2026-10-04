@@ -1,7 +1,7 @@
 import type { Readable } from 'node:stream'
 import { execa } from 'execa'
 import { PeekError } from '../utils/errors.js'
-import type { TunnelConnection, TunnelExit, TunnelProvider } from './types.js'
+import type { TunnelExit, TunnelProvider, TunnelSession } from './types.js'
 
 const TUNNEL_TIMEOUT_MS = 45_000
 
@@ -84,6 +84,29 @@ export function parseTunnelUrl(line: string): string | undefined {
   return undefined
 }
 
+function targetArgument(target: URL): string {
+  const port = Number(target.port || 80)
+  if (
+    target.protocol !== 'http:' ||
+    target.hostname !== '127.0.0.1' ||
+    target.username ||
+    target.password ||
+    target.pathname !== '/' ||
+    target.search ||
+    target.hash ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535
+  ) {
+    throw new PeekError(
+      'TUNNEL_CONFIG_ERROR',
+      'Tunnel target must be a root HTTP URL on 127.0.0.1.',
+      'Use http://127.0.0.1:<port>/ with port 1-65535 and no credentials, query, or fragment.',
+    )
+  }
+  return `http://${target.hostname}:${port}`
+}
+
 export class CloudflareProvider implements TunnelProvider {
   readonly name = 'cloudflare'
   private child: TunnelChild | undefined
@@ -97,21 +120,22 @@ export class CloudflareProvider implements TunnelProvider {
   ) {}
 
   connect(options: {
-    port: number
+    target: URL
     signal: AbortSignal
-  }): Promise<TunnelConnection> {
-    const { port, signal } = options
+  }): Promise<TunnelSession> {
+    const { target, signal } = options
     signal.throwIfAborted()
+    const origin = targetArgument(target)
     this.diagnostics.length = 0
-    const args = ['tunnel', '--url', `http://127.0.0.1:${port}`]
+    const args = ['tunnel', '--url', origin]
     if (this.originHostHeader) args.push('--http-host-header', 'localhost')
     const child = this.launch(this.binaryPath, args)
     this.child = child
 
-    return new Promise<TunnelConnection>((resolve, reject) => {
+    return new Promise<TunnelSession>((resolve, reject) => {
       let settled = false
       let exited = false
-      const settle = (connection?: TunnelConnection, error?: unknown): void => {
+      const settle = (connection?: TunnelSession, error?: unknown): void => {
         if (settled) return
         settled = true
         clearTimeout(timeout)

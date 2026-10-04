@@ -377,6 +377,13 @@ it('replaces a dropped real transport while preserving the dev PID and port', as
       .filter((record) => record.role === 'connection')
       .map((r) => r.attempt),
   ).toEqual([1, 2])
+  expect(
+    records
+      .filter((record) => record.role === 'connection')
+      .every(
+        (record) => record.targetUrl === `http://127.0.0.1:${original.port}/`,
+      ),
+  ).toBe(true)
   await stop(cli)
   assertJsonOnly(cli)
   const events = readJsonEvents(cli.stdout)

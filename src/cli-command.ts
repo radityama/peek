@@ -1,6 +1,5 @@
 import { defineCommand, renderUsage, runMain } from 'citty'
 import packageJson from '../package.json' with { type: 'json' }
-import { ensureCloudflared } from './cloudflared/binary.js'
 import { loadConfig } from './core/config.js'
 import {
   type DevCommand,
@@ -13,8 +12,8 @@ import { Lifecycle } from './core/lifecycle.js'
 import { parsePort } from './core/port.js'
 import { readProject } from './core/project.js'
 import { runPeek } from './core/run.js'
-import { CloudflareProvider } from './tunnel/cloudflare.js'
-import type { TunnelProvider } from './tunnel/types.js'
+import { prepareProvider } from './tunnel/prepare.js'
+import type { ProviderPreparation, TunnelProvider } from './tunnel/types.js'
 import { writeJsonEvent } from './ui/json-event.js'
 import { JsonOutput } from './ui/json-output.js'
 import { TerminalOutput } from './ui/output.js'
@@ -24,31 +23,9 @@ import { shouldCheckForUpdates } from './update/eligibility.js'
 import { createUpdateNotice } from './update/notice.js'
 import { formatError, PeekError } from './utils/errors.js'
 
-export interface ProviderPreparation {
-  signal: AbortSignal
-  onDownload: () => void
-  onDiagnostic: ((line: string) => void) | undefined
-  originHostHeader: 'localhost' | undefined
-}
-
 export interface CliDependencies {
   prepareProvider(options: ProviderPreparation): Promise<TunnelProvider>
   doctor?: typeof runDoctor
-}
-
-async function prepareProvider(
-  options: ProviderPreparation,
-): Promise<TunnelProvider> {
-  const binaryPath = await ensureCloudflared({
-    signal: options.signal,
-    onDownload: options.onDownload,
-  })
-  return new CloudflareProvider(
-    binaryPath,
-    undefined,
-    options.onDiagnostic,
-    options.originHostHeader,
-  )
 }
 
 export async function runCli(

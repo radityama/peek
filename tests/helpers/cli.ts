@@ -17,6 +17,7 @@ export interface JournalRecord {
   pid?: number
   port?: number
   targetPort?: number
+  targetUrl?: string
   attempt?: number
   originHostHeader?: string
 }

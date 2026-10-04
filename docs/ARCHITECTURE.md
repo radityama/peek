@@ -39,7 +39,9 @@ flowchart TD
 | `src/core/lifecycle.ts` | Checked phases, shutdown outcome, resource ownership, and signals. |
 | `src/core/cleanup.ts` | Bounded provider and dev cleanup with forced termination and error results. |
 | `src/cloudflared/*` | Fixed release mapping, download, checksum, and cache. |
-| `src/tunnel/*` | Small provider contract and Cloudflare implementation. |
+| `src/tunnel/types.ts` | Local target, session/liveness and provider cleanup contract. |
+| `src/tunnel/prepare.ts` | Prepare the verified managed Cloudflare provider; CLI composition consumes this factory. |
+| `src/tunnel/cloudflare.ts` | Validate the loopback HTTP origin, start the transport, parse its public URL and confirm process shutdown. |
 | `src/ui/*` | Human and JSON event output and terminal-size-aware QR rendering. |
 | `src/ui/json-event.ts` | Type the current JSON payloads and own metadata/framing for runtime, help and version events. |
 | `src/update/*` | Best-effort npm version check, user-level 24-hour cache, and notification timing; no dependency from the preview core. |
@@ -49,8 +51,9 @@ flowchart TD
 
 1. Parse flags, inspect the current project, and select an argv array. An
    explicit command after `--` bypasses project inspection.
-2. In public mode, verify or download the pinned `cloudflared` binary before
-   starting the dev server. LAN mode skips the tunnel engine.
+2. In public mode, the tunnel preparation factory verifies or downloads the
+   pinned `cloudflared` binary before starting the dev server. Register the
+   prepared provider for cleanup. LAN mode skips the tunnel engine.
 3. Snapshot common ports and an explicit `--port`, then spawn the dev command
    without a shell. Stream both output channels to the terminal and port
    detector.
@@ -161,8 +164,38 @@ wire shape and stream behavior. Ordinary failures and cleanup failure after
 otherwise successful completion use exit 1. Signals retain 130/143; successful
 completion and the live doctor's requested stop remain 0. CLI misuse remains 2.
 
-The provider contract contains `connect`, `disconnect`, optional
-`forceDisconnect`, and a connection URL and exit promise. Cloudflare output
-parsing and process flags stay outside server detection. A future proxy would
-enter after `server-ready` and before tunnel connection, with its ownership and
-cleanup order added here when implemented. Peek currently has no proxy.
+### Provider and session boundary
+
+```text
+CLI composition
+    -> tunnel preparation factory
+    -> Lifecycle / runPeek
+    -> TunnelProvider.connect({ target: URL, signal })
+    -> TunnelSession { url: string, exited: Promise<TunnelExit> }
+```
+
+The CLI selects options and output. `src/tunnel/prepare.ts` owns concrete
+Cloudflare construction and the verified binary dependency. Core orchestration
+passes the selected, verified `http://127.0.0.1:<port>/` target; local display
+URLs retain their existing localhost form. Cloudflare accepts root HTTP targets
+on that numeric loopback address with a valid port and without credentials,
+query or fragment. It rejects other origins before launching a process.
+
+A `TunnelSession` reports the transport's public URL and termination. The
+provider retains `disconnect()` and optional `forceDisconnect()` because
+cleanup must also work when startup has not returned a session. `Lifecycle`
+registers the provider before dev startup; `runPeek` disconnects before every
+connect attempt. Reconnection preserves the dev process and verified target.
+The session does not own the dev server or decide retry timing.
+
+Cloudflare output parsing, process flags and config diagnostics stay inside the
+tunnel implementation. Host-header compatibility remains the explicit
+localhost override. Authentication, expiry and inspection are absent from
+the transport contract. Doctor may inspect the managed engine as a diagnostic.
+
+The future local proxy will enter after `server-ready` and before tunnel
+connection. Its verified loopback listener becomes the provider target while
+the dev URL remains the application target. Proxy readiness, ownership and
+shutdown order must be integrated into the lifecycle when implemented. The
+CLI and provider transport need no proxy authentication knowledge. Peek
+currently has no local proxy.

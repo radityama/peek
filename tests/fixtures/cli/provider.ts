@@ -1,10 +1,10 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
-import type { ProviderPreparation } from '../../../src/cli-command.js'
 import type {
-  TunnelConnection,
+  ProviderPreparation,
   TunnelExit,
   TunnelProvider,
+  TunnelSession,
 } from '../../../src/tunnel/types.js'
 
 function journal(record: Record<string, unknown>): void {
@@ -40,15 +40,21 @@ class FixtureProvider implements TunnelProvider {
   ) {}
 
   async connect({
-    port,
+    target,
     signal,
   }: {
-    port: number
+    target: URL
     signal: AbortSignal
-  }): Promise<TunnelConnection> {
+  }): Promise<TunnelSession> {
     signal.throwIfAborted()
+    const port = Number(target.port || 80)
     const attempt = ++this.attempt
-    journal({ role: 'connection', attempt, targetPort: port })
+    journal({
+      role: 'connection',
+      attempt,
+      targetPort: port,
+      targetUrl: target.href,
+    })
     if (process.env.PEEK_TEST_PROVIDER_MODE === 'fail-once' && attempt === 1) {
       throw new Error('Fixture tunnel startup failed once')
     }
