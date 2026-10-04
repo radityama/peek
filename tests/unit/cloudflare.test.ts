@@ -502,6 +502,55 @@ describe('Cloudflare shutdown', () => {
     },
   )
 
+  it.each(['abort', 'timeout'] as const)(
+    'rejects a synchronous URL from the kill hook after startup %s',
+    async (reason) => {
+      const fake = fakeChild()
+      const controller = new AbortController()
+      const cancelled = new Error('cancelled')
+      const provider = new CloudflareProvider(
+        '/tmp/cloudflared',
+        () => fake.child,
+      )
+      fake.kill.mockImplementation((signal) => {
+        if (signal !== 'SIGTERM') return
+        fake.stdout.write('https://late.trycloudflare.com\n')
+        fake.stderr.write('https://late.trycloudflare.com\n')
+      })
+      const connecting = provider.connect({
+        target: new URL('http://127.0.0.1:3000'),
+        signal: controller.signal,
+      })
+      const observed = connecting.catch(() => undefined)
+      try {
+        const rejected =
+          reason === 'abort'
+            ? expect(connecting).rejects.toBe(cancelled)
+            : expect(connecting).rejects.toMatchObject({
+                code: 'TUNNEL_CONNECTION_ERROR',
+                message:
+                  'Cloudflare did not provide a public URL within 45 seconds.',
+              })
+        void rejected.catch(() => undefined)
+        if (reason === 'abort') controller.abort(cancelled)
+        else await vi.advanceTimersByTimeAsync(45000)
+        await rejected
+        expect(fake.kill).toHaveBeenCalledExactlyOnceWith('SIGTERM')
+        expect(vi.getTimerCount()).toBe(0)
+        controller.abort(cancelled)
+        expect(fake.kill).toHaveBeenCalledTimes(1)
+        provider.forceDisconnect()
+        expect(fake.kill).toHaveBeenLastCalledWith('SIGKILL')
+        fake.exit(0)
+        await fake.child.exit
+        expect(fake.stdout.listenerCount('data')).toBe(0)
+        expect(fake.stderr.listenerCount('data')).toBe(0)
+      } finally {
+        await dispose(provider, [fake], [observed])
+      }
+    },
+  )
+
   it('removes data listeners on rejected exit without discarding the child', async () => {
     const fake = fakeChild()
     const provider = await connected(fake)

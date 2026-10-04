@@ -125,8 +125,9 @@ another attempt. Delays after events one through seven are 1, 2, 4, 8, 16,
 
 A session lasting at least 30 seconds resets the event count, backoff and
 current-budget cause before its drop counts as the next budget's first event.
-Peek measures elapsed session time with a monotonic clock and evaluates the
-reset at exit, without a separate timer. Short sessions do not reset the budget.
+Peek measures elapsed session time with a monotonic clock from connection
+resolution to observed exit, before drop and state callbacks run. It evaluates
+the reset at exit, without a separate timer. Short sessions do not reset the budget.
 Failed-connect warning numbers retain their separate lifetime count.
 The limit is a count rather than a fixed elapsed deadline: Cloudflare still
 allows 45 seconds per attempt. Cancellation or dev exit ends recovery
@@ -209,7 +210,9 @@ disconnect. Concurrent disconnect calls share one teardown; failed teardown
 retains the child and permits a later disconnect attempt. Confirmed exit and
 settled teardown permit replacement. Stream data listeners remain active for
 diagnostics after readiness and are removed on resolved or rejected exit
-observation. Rejected observation retains the force handle.
+observation. Rejected observation, startup abort and timeout retain the force handle.
+Startup abort and timeout settle the rejection before invoking the kill hook,
+so synchronous output from that hook cannot create a session.
 
 Cloudflare output parsing, process flags and config diagnostics stay inside the
 tunnel implementation. Host-header compatibility remains the explicit

@@ -774,6 +774,61 @@ it.each([29999, 30000])(
   },
 )
 
+it.each(['drop', 'state'] as const)(
+  'exhausts a sub-threshold session before the %s callback crosses 30 seconds',
+  async (callback) => {
+    const lifecycle = new Lifecycle()
+    lifecycles.push(lifecycle)
+    const setDev = vi.spyOn(lifecycle, 'setDev')
+    const firstTunnel = tunnelPids.length
+    let now = 0
+    const callbacks: string[] = []
+    const ready = vi.fn(() => {
+      now = 29999
+      if (ready.mock.calls.length === 2) lifecycle.requestStop()
+    })
+    const failures = vi.fn()
+    const error = await runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: fakeProvider([
+        ...Array.from({ length: 7 }, () => 'crash'),
+        'later-crash',
+        'ready',
+      ]),
+      retryDelaysMs: [1],
+      now: () => now,
+      onReconnectFailure: failures,
+      onReady: ready,
+      onTunnelDrop: () => {
+        callbacks.push('drop')
+        if (callback === 'drop') now = 30000
+      },
+      onState: (state) => {
+        if (state !== 'reconnecting') return
+        callbacks.push('reconnecting')
+        if (callback === 'state') now = 30000
+      },
+    }).catch((failure: unknown) => failure)
+    expect(isRunning(setDev.mock.calls[0]?.[0].pid ?? 0)).toBe(false)
+    expect(tunnelPids.slice(firstTunnel).every((pid) => !isRunning(pid))).toBe(
+      true,
+    )
+    expect(error).toMatchObject({ code: 'TUNNEL_CONNECTION_ERROR' })
+    expect(ready).toHaveBeenCalledOnce()
+    expect(failures.mock.calls.map(([attempt]) => attempt)).toEqual([
+      1, 2, 3, 4, 5, 6, 7,
+    ])
+    expect(callbacks).toEqual(['drop', 'reconnecting'])
+    expect(now).toBe(30000)
+    expect(tunnelPids.slice(firstTunnel)).toHaveLength(8)
+    expect(setDev).toHaveBeenCalledOnce()
+    expect(lifecycle.phase).toBe('stopped')
+    expect(lifecycle.outcome?.kind).toBe('failed')
+  },
+)
+
 it('passes the verified loopback URL to a generic provider', async () => {
   const lifecycle = new Lifecycle()
   lifecycles.push(lifecycle)

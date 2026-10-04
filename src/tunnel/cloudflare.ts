@@ -159,8 +159,8 @@ export class CloudflareProvider implements TunnelProvider {
         else reject(error)
       }
       const onAbort = (): void => {
-        child.kill('SIGTERM')
         settle(undefined, signal.reason ?? new Error('Cancelled'))
+        child.kill('SIGTERM')
       }
       const onLine = (line: string): void => {
         if (line.trim()) {
@@ -188,7 +188,6 @@ export class CloudflareProvider implements TunnelProvider {
       }
 
       const timeout = setTimeout(() => {
-        child.kill('SIGTERM')
         settle(
           undefined,
           new PeekError(
@@ -197,6 +196,7 @@ export class CloudflareProvider implements TunnelProvider {
             'Check your network connection and retry with --verbose.',
           ),
         )
+        child.kill('SIGTERM')
       }, TUNNEL_TIMEOUT_MS)
       signal.addEventListener('abort', onAbort, { once: true })
       const removeStreams = [

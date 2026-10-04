@@ -284,6 +284,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       if (outcome.kind === 'cancel') return
       if (outcome.kind === 'dev') throw serverExit(outcome.exit)
       signal.throwIfAborted()
+      const sessionDurationMs = now() - connectedAt
       options.onTunnelDrop?.(
         `Tunnel exited with code ${outcome.value.exitCode ?? 'unknown'}.`,
       )
@@ -292,7 +293,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       lifecycle.advance('reconnecting')
       options.onState?.('reconnecting')
       signal.throwIfAborted()
-      recovery.dropped(now() - connectedAt)
+      recovery.dropped(sessionDurationMs)
       connection = undefined
     }
   } catch (error) {
