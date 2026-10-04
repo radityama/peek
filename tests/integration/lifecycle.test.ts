@@ -660,6 +660,120 @@ function isRunning(pid: number): boolean {
   }
 }
 
+it('exhausts eight initial tunnel failures and cleans the original dev process', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  const firstTunnel = tunnelPids.length
+  const failures = vi.fn((attempt: number) => {
+    if (attempt >= 9) lifecycle.requestStop()
+  })
+  const ready = vi.fn()
+  const error = await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider('crash'),
+    retryDelaysMs: [1],
+    onReconnectFailure: failures,
+    onReady: ready,
+  }).catch((failure: unknown) => failure)
+  expect(error).toMatchObject({ code: 'TUNNEL_CONNECTION_ERROR' })
+  expect(failures.mock.calls.map(([attempt]) => attempt)).toEqual([
+    1, 2, 3, 4, 5, 6, 7, 8,
+  ])
+  expect(ready).not.toHaveBeenCalled()
+  expect(tunnelPids.slice(firstTunnel)).toHaveLength(8)
+  const dev = setDev.mock.calls[0]?.[0]
+  expect(dev).toBeDefined()
+  expect(isRunning(dev?.pid ?? 0)).toBe(false)
+  expect(tunnelPids.slice(firstTunnel).every((pid) => !isRunning(pid))).toBe(
+    true,
+  )
+  expect(lifecycle.phase).toBe('stopped')
+  expect(lifecycle.outcome?.kind).toBe('failed')
+})
+
+it('exhausts short tunnel sessions rather than resetting at readiness', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  const firstTunnel = tunnelPids.length
+  const ready = vi.fn(() => {
+    if (ready.mock.calls.length >= 9) lifecycle.requestStop()
+  })
+  const dropped = vi.fn()
+  const error = await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider('later-crash'),
+    retryDelaysMs: [1],
+    onReady: ready,
+    onTunnelDrop: dropped,
+  }).catch((failure: unknown) => failure)
+  expect(error).toMatchObject({ code: 'TUNNEL_CONNECTION_ERROR' })
+  expect(ready).toHaveBeenCalledTimes(8)
+  expect(dropped).toHaveBeenCalledTimes(8)
+  expect(tunnelPids.slice(firstTunnel)).toHaveLength(8)
+  expect(isRunning(setDev.mock.calls[0]?.[0].pid ?? 0)).toBe(false)
+  expect(tunnelPids.slice(firstTunnel).every((pid) => !isRunning(pid))).toBe(
+    true,
+  )
+})
+
+it.each([29999, 30000])(
+  'applies the stable reset boundary at %i ms without restarting dev',
+  async (duration) => {
+    const lifecycle = new Lifecycle()
+    lifecycles.push(lifecycle)
+    const setDev = vi.spyOn(lifecycle, 'setDev')
+    const firstTunnel = tunnelPids.length
+    const failures = vi.fn()
+    let now = 0
+    const ready = vi.fn(() => {
+      now = duration
+      if (ready.mock.calls.length === 2) lifecycle.requestStop()
+    })
+    const modes = [
+      ...Array.from({ length: 7 }, () => 'crash'),
+      'later-crash',
+      'crash',
+      'ready',
+    ]
+    const error = await runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: fakeProvider(modes),
+      retryDelaysMs: [1],
+      now: () => now,
+      onReconnectFailure: failures,
+      onReady: ready,
+    }).catch((failure: unknown) => failure)
+    if (duration === 29999) {
+      expect(error).toMatchObject({ code: 'TUNNEL_CONNECTION_ERROR' })
+      expect(ready).toHaveBeenCalledOnce()
+      expect(failures.mock.calls.map(([attempt]) => attempt)).toEqual([
+        1, 2, 3, 4, 5, 6, 7,
+      ])
+      expect(tunnelPids.slice(firstTunnel)).toHaveLength(8)
+    } else {
+      expect(error).toBeUndefined()
+      expect(ready).toHaveBeenCalledTimes(2)
+      expect(failures.mock.calls.map(([attempt]) => attempt)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8,
+      ])
+      expect(tunnelPids.slice(firstTunnel)).toHaveLength(10)
+    }
+    expect(setDev).toHaveBeenCalledOnce()
+    expect(isRunning(setDev.mock.calls[0]?.[0].pid ?? 0)).toBe(false)
+    expect(tunnelPids.slice(firstTunnel).every((pid) => !isRunning(pid))).toBe(
+      true,
+    )
+  },
+)
+
 it('passes the verified loopback URL to a generic provider', async () => {
   const lifecycle = new Lifecycle()
   lifecycles.push(lifecycle)
