@@ -1,7 +1,7 @@
 # v0.2 Provider Boundary Hardening
 
-Status: recommended target and preparation design approved in conversation.
-Written-spec review is pending; implementation has not started.
+Status: recommended target and preparation design and written spec approved
+in conversation. Implementation may proceed.
 
 Baseline: `8b19cef`, package `@usepeek/peek` 0.2.2. PRs #10, #11 and #12
 are merged with required CI passing. Branch: `refactor/v02-provider-boundary`.
