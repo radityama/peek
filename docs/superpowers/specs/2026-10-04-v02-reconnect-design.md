@@ -1,7 +1,7 @@
 # v0.2 Bounded Tunnel Recovery
 
-Status: approach approved in conversation on 2026-10-04. Written spec awaits
-user review before the implementation plan and code.
+Status: approach and written spec approved in conversation on 2026-10-04.
+Implementation follows the [phase plan](../plans/2026-10-04-v02-reconnect.md).
 
 Baseline: main `a54a661`, package `@usepeek/peek` 0.2.2. PRs #10 through #14
 are merged with required and post-merge CI passing. Branch:
