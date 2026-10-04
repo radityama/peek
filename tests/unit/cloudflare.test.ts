@@ -52,11 +52,82 @@ function fakeChild(): {
   }
 }
 
+describe('Cloudflare target contract', () => {
+  it.each([1, 80, 41235, 65535])(
+    'uses the supplied local listener on port %i',
+    async (port) => {
+      const fake = fakeChild()
+      const launch = vi.fn(() => fake.child)
+      const provider = new CloudflareProvider('/tmp/cloudflared', launch)
+      try {
+        const connecting = provider.connect({
+          target: new URL(`http://127.0.0.1:${port}/`),
+          signal: new AbortController().signal,
+        })
+        fake.stderr.write('https://rapid-river.trycloudflare.com\n')
+        const session = await connecting
+        expect(launch).toHaveBeenCalledWith('/tmp/cloudflared', [
+          'tunnel',
+          '--url',
+          `http://127.0.0.1:${port}`,
+        ])
+        expect(session.url).toBe('https://rapid-river.trycloudflare.com')
+        fake.exit(17)
+        await expect(session.exited).resolves.toEqual({ exitCode: 17 })
+      } finally {
+        fake.exit(0)
+        await provider.disconnect()
+      }
+    },
+  )
+
+  it.each([
+    'https://127.0.0.1:3000/',
+    'ftp://127.0.0.1:3000/',
+    'http://localhost:3000/',
+    'http://0.0.0.0:3000/',
+    'http://[::]:3000/',
+    'http://[::1]:3000/',
+    'http://192.168.1.10:3000/',
+    'http://example.com:3000/',
+    'http://127.0.0.2:3000/',
+    'http://user:secret@127.0.0.1:3000/',
+    'http://:secret@127.0.0.1:3000/',
+    'http://127.0.0.1:3000/nested',
+    'http://127.0.0.1:3000/?token=secret',
+    'http://127.0.0.1:3000/#fragment',
+    'http://127.0.0.1:0/',
+  ])('rejects invalid target %s before spawning', async (text) => {
+    const fake = fakeChild()
+    const launch = vi.fn(() => fake.child)
+    const provider = new CloudflareProvider('/tmp/cloudflared', launch)
+    const connecting = Promise.resolve().then(() =>
+      provider.connect({
+        target: new URL(text),
+        signal: new AbortController().signal,
+      }),
+    )
+    const rejected = expect(connecting).rejects.toMatchObject({
+      code: 'TUNNEL_CONFIG_ERROR',
+      message: 'Tunnel target must be a root HTTP URL on 127.0.0.1.',
+    })
+    try {
+      await Promise.resolve()
+      fake.stderr.write('https://rapid-river.trycloudflare.com\n')
+      await rejected
+      expect(launch).not.toHaveBeenCalled()
+    } finally {
+      fake.exit(0)
+      await provider.disconnect()
+    }
+  })
+})
+
 it('waits for a valid public URL on stderr', async () => {
   const fake = fakeChild()
   const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
   const connecting = provider.connect({
-    port: 3000,
+    target: new URL('http://127.0.0.1:3000'),
     signal: new AbortController().signal,
   })
   fake.stderr.write('starting\n')
@@ -78,7 +149,7 @@ it('passes an explicit localhost Host header to cloudflared', async () => {
     'localhost',
   )
   const connecting = provider.connect({
-    port: 3000,
+    target: new URL('http://127.0.0.1:3000'),
     signal: new AbortController().signal,
   })
   fake.stderr.write('https://rapid-river.trycloudflare.com\n')
@@ -98,7 +169,7 @@ it('reports an early tunnel exit', async () => {
   const fake = fakeChild()
   const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
   const connecting = provider.connect({
-    port: 3000,
+    target: new URL('http://127.0.0.1:3000'),
     signal: new AbortController().signal,
   })
   fake.stderr.write('network unreachable\n')
@@ -112,7 +183,7 @@ it('reports a local config conflict as nonrecoverable', async () => {
   const fake = fakeChild()
   const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
   const connecting = provider.connect({
-    port: 3000,
+    target: new URL('http://127.0.0.1:3000'),
     signal: new AbortController().signal,
   })
   fake.stderr.write('config.yaml blocks Quick Tunnels\n')
@@ -126,7 +197,10 @@ it('stops tunnel startup when cancelled', async () => {
   const fake = fakeChild()
   const controller = new AbortController()
   const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
-  const connecting = provider.connect({ port: 3000, signal: controller.signal })
+  const connecting = provider.connect({
+    target: new URL('http://127.0.0.1:3000'),
+    signal: controller.signal,
+  })
   controller.abort()
   await expect(connecting).rejects.toThrow()
   expect(fake.kill).toHaveBeenCalledWith('SIGTERM')
@@ -144,7 +218,7 @@ describe('Cloudflare shutdown', () => {
       () => fake.child,
     )
     const connection = provider.connect({
-      port: 3000,
+      target: new URL('http://127.0.0.1:3000'),
       signal: new AbortController().signal,
     })
     fake.stderr.write('https://rapid-river.trycloudflare.com\n')
@@ -217,7 +291,7 @@ describe('Cloudflare shutdown', () => {
     const provider = new CloudflareProvider('/tmp/cloudflared', launch)
     for (const fake of [first, replacement]) {
       const connection = provider.connect({
-        port: 3000,
+        target: new URL('http://127.0.0.1:3000'),
         signal: new AbortController().signal,
       })
       fake.stderr.write('https://rapid-river.trycloudflare.com\n')

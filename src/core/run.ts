@@ -251,7 +251,10 @@ export async function runPeek(options: RunOptions): Promise<void> {
         signal.throwIfAborted()
         try {
           const connected = await waitForOutcome(
-            provider.connect({ port, signal }),
+            provider.connect({
+              target: new URL(`http://127.0.0.1:${port}`),
+              signal,
+            }),
             dev.exit,
             signal,
           )

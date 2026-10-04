@@ -49,7 +49,7 @@ already contains the spec. Do not change the original shared checkout.
 `tests/helpers/cli.ts`, `tests/integration/cli-preview.test.ts`,
 `tests/integration/cli-process.test.ts`.
 
-- [ ] **Step 1: Add target contract tests before changing production.**
+- [x] **Step 1: Add target contract tests before changing production.**
 
 Append this describe block after fakeChild in `tests/unit/cloudflare.test.ts`:
 
@@ -118,13 +118,13 @@ describe('Cloudflare target contract', () => {
 })
 ```
 
-- [ ] **Step 2: Record the red run.**
+- [x] **Step 2: Record the red run.**
 
 Run `pnpm test tests/unit/cloudflare.test.ts`. Expect the new target tests
 to fail against the port API; old successful cases still clean their fake
 children in finally. Record the command and relevant failure in the report.
 
-- [ ] **Step 3: Replace src/tunnel/types.ts with this complete contract.**
+- [x] **Step 3: Replace src/tunnel/types.ts with this complete contract.**
 
 ```ts
 export interface TunnelExit {
@@ -205,7 +205,7 @@ In `src/core/run.ts`, replace the one connect expression with:
             }),
 ```
 
-- [ ] **Step 4: Migrate existing calls and the behavioral fixture.**
+- [x] **Step 4: Migrate existing calls and the behavioral fixture.**
 
 In `tests/unit/cloudflare.test.ts`, the existing calls in public-URL, Host
 override, early-exit, config-conflict, connected helper and late-child identity
@@ -275,7 +275,7 @@ existing connection attempt assertion:
 
 Keep existing connection-count, HTTP, WebSocket, LAN, PID and listener checks.
 
-- [ ] **Step 5: Verify, self-review and commit.**
+- [x] **Step 5: Verify, self-review and commit.**
 
 Run `pnpm typecheck`, then `pnpm test tests/unit/cloudflare.test.ts
 tests/unit/lifecycle.test.ts tests/integration/cli-preview.test.ts

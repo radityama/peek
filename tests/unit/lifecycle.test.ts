@@ -241,7 +241,10 @@ describe('Lifecycle', () => {
       await lifecycle.setDev(server)
       lifecycle.installSignals()
       const connecting = expect(
-        tunnel.connect({ port: 3000, signal: lifecycle.signal }),
+        tunnel.connect({
+          target: new URL('http://127.0.0.1:3000'),
+          signal: lifecycle.signal,
+        }),
       ).rejects.toThrow('Peek was stopped')
       const stopped = lifecycle.stop()
       await connecting
