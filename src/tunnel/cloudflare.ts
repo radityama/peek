@@ -110,6 +110,7 @@ function targetArgument(target: URL): string {
 export class CloudflareProvider implements TunnelProvider {
   readonly name = 'cloudflare'
   private child: TunnelChild | undefined
+  private stopping: Promise<void> | undefined
   private readonly diagnostics: string[] = []
 
   constructor(
@@ -126,6 +127,13 @@ export class CloudflareProvider implements TunnelProvider {
     const { target, signal } = options
     signal.throwIfAborted()
     const origin = targetArgument(target)
+    if (this.child || this.stopping) {
+      throw new PeekError(
+        'TUNNEL_CONFIG_ERROR',
+        'Cloudflare already owns a pending or active tunnel.',
+        'Wait for disconnect to confirm tunnel shutdown before connecting again.',
+      )
+    }
     this.diagnostics.length = 0
     const args = ['tunnel', '--url', origin]
     if (this.originHostHeader) args.push('--http-host-header', 'localhost')
@@ -156,15 +164,20 @@ export class CloudflareProvider implements TunnelProvider {
         const url = parseTunnelUrl(line)
         if (url && !exited) settle({ url, exited: child.exit })
       }
-      const watchStream = (stream: Readable): void => {
+      const watchStream = (stream: Readable): (() => void) => {
         let pending = ''
-        stream.on('data', (chunk: Buffer | string) => {
+        const onData = (chunk: Buffer | string): void => {
           pending += chunk.toString()
           const lines = pending.split(/[\r\n]+/)
           pending = lines.pop() ?? ''
           for (const line of lines) onLine(line)
           if (parseTunnelUrl(pending)) onLine(pending)
-        })
+        }
+        stream.on('data', onData)
+        return () => {
+          stream.removeListener('data', onData)
+          pending = ''
+        }
       }
 
       const timeout = setTimeout(() => {
@@ -179,22 +192,43 @@ export class CloudflareProvider implements TunnelProvider {
         )
       }, TUNNEL_TIMEOUT_MS)
       signal.addEventListener('abort', onAbort, { once: true })
-      watchStream(child.stdout)
-      watchStream(child.stderr)
+      const removeStreams = [
+        watchStream(child.stdout),
+        watchStream(child.stderr),
+      ]
+      const finishStreams = (): void => {
+        exited = true
+        for (const remove of removeStreams) remove()
+      }
       void child.exit.then(
         (result) => {
-          exited = true
+          finishStreams()
           if (this.child === child) this.child = undefined
           settle(undefined, this.exitError(result))
         },
-        (error: unknown) => settle(undefined, error),
+        (error: unknown) => {
+          finishStreams()
+          settle(undefined, error)
+        },
       )
+      if (signal.aborted) onAbort()
     })
   }
 
-  async disconnect(): Promise<void> {
+  disconnect(): Promise<void> {
+    if (this.stopping) return this.stopping
     const child = this.child
-    if (!child) return
+    if (!child) return Promise.resolve()
+    const stopping = Promise.resolve().then(() => this.stopChild(child))
+    this.stopping = stopping
+    const release = (): void => {
+      if (this.stopping === stopping) this.stopping = undefined
+    }
+    void stopping.then(release, release)
+    return stopping
+  }
+
+  private async stopChild(child: TunnelChild): Promise<void> {
     child.kill('SIGTERM')
     if (!(await waitForExit(child.exit, 3_000))) {
       child.kill('SIGKILL')
