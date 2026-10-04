@@ -97,6 +97,21 @@ it('does not fetch after cancellation', async () => {
   expect(fetcher).not.toHaveBeenCalled()
 })
 
+it('classifies cache directory failure before download or execution', async () => {
+  const root = join(await cache(), 'cache-is-file')
+  await writeFile(root, 'not a directory')
+  const bytes = Buffer.from('known binary')
+  const fetcher = vi.fn(async () => new Response(bytes, { status: 200 }))
+  await expect(
+    ensureCloudflared({ cacheDir: root, asset: fakeAsset(bytes), fetcher }),
+  ).rejects.toMatchObject({
+    code: 'CLOUDFLARED_INSTALL_ERROR',
+    hint: expect.stringContaining('writable directory'),
+    cause: expect.any(Error),
+  })
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
 it('rejects redirects outside trusted HTTPS hosts', async () => {
   const bytes = Buffer.from('known binary')
   const fetcher = vi.fn(

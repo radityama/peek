@@ -65,6 +65,22 @@ it('rejects invalid config fields and a throwing config file', async () => {
     'throw new Error("broken config")',
   )
   await expect(loadConfig(directory)).rejects.toMatchObject({
-    code: 'PROJECT_INVALID',
+    code: 'CONFIG_ERROR',
+  })
+})
+
+it.each([null, { port: 0 }, { provider: 'other' }, { qr: 'yes' }])(
+  'classifies invalid configuration as CONFIG_ERROR (%j)',
+  (value) => {
+    expect(() => validateConfig(value)).toThrow(
+      expect.objectContaining({ code: 'CONFIG_ERROR' }),
+    )
+  },
+)
+
+it('classifies config access errors and retains their cause', async () => {
+  await expect(loadConfig('\0')).rejects.toMatchObject({
+    code: 'CONFIG_ERROR',
+    cause: expect.any(Error),
   })
 })
