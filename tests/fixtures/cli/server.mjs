@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const mode = process.env.PEEK_TEST_MODE ?? 'announced'
 const journal = (record) =>
   appendFileSync(process.env.PEEK_TEST_JOURNAL, `${JSON.stringify(record)}\n`)
-journal({ role: 'dev', pid: process.pid })
+journal({ role: 'dev', pid: process.pid, argv: process.argv.slice(2) })
 console.log('fixture stdout')
 console.error('fixture stderr')
 if (mode === 'crash') process.exit(7)

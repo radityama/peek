@@ -14,6 +14,7 @@ export interface CliEvent extends Record<string, unknown> {
 
 export interface JournalRecord {
   role: string
+  argv?: string[]
   pid?: number
   port?: number
   targetPort?: number
@@ -24,6 +25,8 @@ export interface JournalRecord {
 
 export interface CliOptions {
   entry?: 'injected' | 'shipped'
+  outputMode?: 'json' | 'human'
+  packageJson?: string
   args?: string[]
   project?: boolean
   config?: string
@@ -98,17 +101,18 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
     )
     await writeFile(
       join(directory, 'package.json'),
-      JSON.stringify({
-        name: 'peek-cli-fixture',
-        private: true,
-        packageManager: 'npm',
-        scripts: {
-          dev: 'node ./dev.mjs',
-        },
-        ...(options.framework === 'vite'
-          ? { devDependencies: { vite: '*' } }
-          : {}),
-      }),
+      options.packageJson ??
+        JSON.stringify({
+          name: 'peek-cli-fixture',
+          private: true,
+          packageManager: 'npm',
+          scripts: {
+            dev: 'node ./dev.mjs',
+          },
+          ...(options.framework === 'vite'
+            ? { devDependencies: { vite: '*' } }
+            : {}),
+        }),
     )
     if (options.config !== undefined) {
       await writeFile(join(directory, 'peek.config.ts'), options.config)
@@ -145,7 +149,10 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
     let closed = false
     let disposed = false
     const events: CliEvent[] = []
-    const json = args.includes('--json')
+    const json =
+      options.outputMode === undefined
+        ? args.includes('--json')
+        : options.outputMode === 'json'
     const parseLine = (line: string): void => {
       if (!json || !line.trim()) return
       try {

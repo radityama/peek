@@ -1,4 +1,4 @@
-import { defineCommand, renderUsage, runMain } from 'citty'
+import { defineCommand, parseArgs, renderUsage } from 'citty'
 import packageJson from '../package.json' with { type: 'json' }
 import { loadConfig } from './core/config.js'
 import {
@@ -21,7 +21,7 @@ import type { QrMode } from './ui/qr.js'
 import { checkForUpdate } from './update/check.js'
 import { shouldCheckForUpdates } from './update/eligibility.js'
 import { createUpdateNotice } from './update/notice.js'
-import { formatError, PeekError } from './utils/errors.js'
+import { errorExitCode, formatError, PeekError } from './utils/errors.js'
 
 export interface CliDependencies {
   prepareProvider(options: ProviderPreparation): Promise<TunnelProvider>
@@ -38,7 +38,6 @@ export async function runCli(
   const isDoctor = normalArgs[0] === 'doctor'
   const parsedArgs = isDoctor ? commandArgs.slice(1) : commandArgs
   const explicitArgv = boundary === -1 ? undefined : raw.slice(boundary + 1)
-  const wantsJson = normalArgs.includes('--json')
 
   const flags = {
     port: {
@@ -200,11 +199,9 @@ export async function runCli(
           verbose: args.verbose === true,
         })
         for (const check of checks) output.doctorCheck(check)
-        if (!args.live) {
-          if (checks.some((check) => check.status === 'fail'))
-            process.exitCode = 1
-          return
-        }
+        if (checks.some((check) => check.status === 'fail'))
+          process.exitCode = 1
+        if (!args.live) return
       }
       const config = await loadConfig(process.cwd())
       if (args.lan && config?.provider) {
@@ -342,13 +339,10 @@ export async function runCli(
       }
       if (lifecycle.signalExitCode !== undefined) {
         process.exitCode = lifecycle.signalExitCode
-      } else if (
-        primary?.error instanceof PeekError &&
-        primary.error.code === 'USAGE_ERROR'
-      ) {
-        process.exitCode = 2
       } else if (primary || cleanup.error) {
-        process.exitCode = 1
+        process.exitCode = errorExitCode(
+          primary ? primary.error : cleanup.error,
+        )
       }
     }
   }
@@ -360,29 +354,36 @@ export async function runCli(
       description: 'Run your dev server. Share it instantly.',
     },
     args: flags,
-    run: ({ args }) => execute(args),
   })
 
-  if (wantsJson && normalArgs.includes('--version')) {
-    writeJsonEvent({ type: 'version', version: packageJson.version })
-  } else
-    await runMain(main, {
-      rawArgs: parsedArgs,
-      showUsage: async (command, parent) => {
-        const usage = await renderUsage(command, parent)
-        const help =
-          `${usage}\n` +
-          'COMMANDS\n' +
-          '  peek                     Run the detected dev script\n' +
-          '  peek dev                 Same as peek\n' +
-          '  peek doctor [--live]     Check the environment and preview\n' +
-          '  peek -- pnpm dev         Run an explicit command\n\n' +
-          '  --help                   Show this help\n' +
-          '  --version                Show the version\n' +
-          '  Flags go before --. Docs: https://github.com/radityama/peek\n'
-        if (wantsJson) {
-          writeJsonEvent({ type: 'help', text: help })
-        } else process.stdout.write(help)
-      },
-    })
+  let args: CliArgs | undefined
+  try {
+    args = parseArgs<typeof flags>(parsedArgs, flags)
+    if (parsedArgs.includes('--help') || parsedArgs.includes('-h')) {
+      const usage = await renderUsage(main)
+      const help =
+        `${usage}\n` +
+        'COMMANDS\n' +
+        '  peek                     Run the detected dev script\n' +
+        '  peek dev                 Same as peek\n' +
+        '  peek doctor [--live]     Check the environment and preview\n' +
+        '  peek -- pnpm dev         Run an explicit command\n\n' +
+        '  --help                   Show this help\n' +
+        '  --version                Show the version\n' +
+        '  Flags go before --. Docs: https://github.com/radityama/peek\n'
+      if (args.json) writeJsonEvent({ type: 'help', text: help })
+      else process.stdout.write(help)
+    } else if (parsedArgs.includes('--version') || parsedArgs.includes('-v')) {
+      if (args.json)
+        writeJsonEvent({ type: 'version', version: packageJson.version })
+      else process.stdout.write(`${packageJson.version}\n`)
+    } else {
+      await execute(args)
+    }
+  } catch (error) {
+    const message = formatError(error, args?.verbose === true)
+    if (args?.json) writeJsonEvent({ type: 'error', message })
+    else process.stderr.write(`${message}\n`)
+    process.exitCode ??= errorExitCode(error)
+  }
 }

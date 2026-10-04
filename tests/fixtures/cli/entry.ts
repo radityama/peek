@@ -21,7 +21,11 @@ try {
   await runCli(process.argv.slice(2), {
     prepareProvider: async (options) => prepareFixtureProvider(options),
     doctor: (options) =>
-      runDoctor({ ...options, networkCheck: async () => true }),
+      runDoctor({
+        ...options,
+        networkCheck: async () =>
+          process.env.PEEK_TEST_NETWORK_REACHABLE !== '0',
+      }),
   })
 } finally {
   process.off('message', onMessage)
