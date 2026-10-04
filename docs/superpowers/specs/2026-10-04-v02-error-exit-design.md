@@ -1,7 +1,7 @@
 # v0.2 Error and Exit Semantics
 
-Status: recommended approach approved in conversation. Written-spec review
-is required before the implementation plan and runtime changes.
+Status: approach and written spec approved in conversation on 2026-10-04.
+Implementation follows the [phase plan](../plans/2026-10-04-v02-error-exit.md).
 
 Baseline: main `a4c4797`, package `@usepeek/peek` 0.2.2. PRs #10 through #13
 are merged with required and post-merge CI passing. Branch:
