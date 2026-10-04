@@ -544,6 +544,47 @@ describe('Cloudflare shutdown', () => {
     }
   })
 
+  it('rejects connect re-entry from the synchronous launcher', async () => {
+    const first = fakeChild()
+    const nested = fakeChild()
+    const options = {
+      target: new URL('http://127.0.0.1:3000'),
+      signal: new AbortController().signal,
+    }
+    const observations: Promise<unknown>[] = []
+    let entered = false
+    let nestedError: unknown
+    const launch = vi.fn(() => {
+      if (entered) return nested.child
+      entered = true
+      try {
+        const connecting = provider.connect(options)
+        observations.push(connecting.catch(() => undefined))
+      } catch (error) {
+        nestedError = error
+      }
+      return first.child
+    })
+    const provider = new CloudflareProvider('/tmp/cloudflared', launch)
+    try {
+      const connecting = provider.connect(options)
+      observations.push(connecting.catch(() => undefined))
+      nested.stderr.write('https://nested.trycloudflare.com\n')
+      first.stderr.write('https://first.trycloudflare.com\n')
+      expect((await connecting).url).toBe('https://first.trycloudflare.com')
+      expect(nestedError).toMatchObject({ code: 'TUNNEL_CONFIG_ERROR' })
+      expect(launch).toHaveBeenCalledOnce()
+      provider.forceDisconnect()
+      expect(first.kill).toHaveBeenCalledWith('SIGKILL')
+      expect(nested.kill).not.toHaveBeenCalled()
+      first.exit(0)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      await dispose(provider, [first, nested], observations)
+    }
+  })
+
   it('allows a new launch after a synchronous launch failure', async () => {
     const fake = fakeChild()
     const launch = vi

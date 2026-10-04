@@ -111,6 +111,7 @@ export class CloudflareProvider implements TunnelProvider {
   readonly name = 'cloudflare'
   private child: TunnelChild | undefined
   private stopping: Promise<void> | undefined
+  private launching = false
   private readonly diagnostics: string[] = []
 
   constructor(
@@ -127,7 +128,7 @@ export class CloudflareProvider implements TunnelProvider {
     const { target, signal } = options
     signal.throwIfAborted()
     const origin = targetArgument(target)
-    if (this.child || this.stopping) {
+    if (this.child || this.stopping || this.launching) {
       throw new PeekError(
         'TUNNEL_CONFIG_ERROR',
         'Cloudflare already owns a pending or active tunnel.',
@@ -137,8 +138,14 @@ export class CloudflareProvider implements TunnelProvider {
     this.diagnostics.length = 0
     const args = ['tunnel', '--url', origin]
     if (this.originHostHeader) args.push('--http-host-header', 'localhost')
-    const child = this.launch(this.binaryPath, args)
-    this.child = child
+    let child: TunnelChild
+    this.launching = true
+    try {
+      child = this.launch(this.binaryPath, args)
+      this.child = child
+    } finally {
+      this.launching = false
+    }
 
     return new Promise<TunnelSession>((resolve, reject) => {
       let settled = false
