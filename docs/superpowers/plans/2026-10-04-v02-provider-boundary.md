@@ -438,7 +438,7 @@ with `refactor: move tunnel preparation behind the provider boundary`.
 **Files:** Modify `docs/ARCHITECTURE.md` and this plan. Store gate logs in
 `/tmp/peek-v02-hardening-records/phase4/`, outside tracked source.
 
-- [ ] **Step 1: Update the authoritative architecture map.**
+- [x] **Step 1: Update the authoritative architecture map.**
 
 In the Modules table replace the src/tunnel wildcard row with:
 
@@ -499,7 +499,7 @@ currently has no local proxy.
 Keep current retry, JSON, signal, error and cleanup descriptions unchanged.
 No other document duplicates this ownership section.
 
-- [ ] **Step 2: Run the six local gates sequentially and inspect the artifact.**
+- [x] **Step 2: Run the six local gates sequentially and inspect the artifact.**
 
 Run these commands individually, recording exit status and full output in
 task3-lint.log, task3-typecheck.log, task3-test.log, task3-build.log,
@@ -520,7 +520,7 @@ Inspect pack output for 0.2.2 and no fixtures/new exports/dependencies.
 Installed smoke must pass help/version/config export; this is not packed
 preview or public-tunnel dogfooding. Those remain later project gates.
 
-- [ ] **Step 3: Self-review and commit documentation.**
+- [x] **Step 3: Self-review and commit documentation.**
 
 Run `git diff --check` and inspect source/lockfile/package status. Check the
 new prose against actual types, guard, CLI imports and tests. Mark this task
