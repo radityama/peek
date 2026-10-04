@@ -68,7 +68,16 @@ export async function ensureCloudflared(
     }
   }
 
-  await mkdir(folder, { recursive: true, mode: 0o700 })
+  try {
+    await mkdir(folder, { recursive: true, mode: 0o700 })
+  } catch (cause) {
+    throw new PeekError(
+      'CLOUDFLARED_INSTALL_ERROR',
+      'Peek could not create the Cloudflare tunnel engine cache directory.',
+      'Check that ~/.peek/bin is a writable directory and retry.',
+      cause,
+    )
+  }
   const nonce = randomUUID()
   const temporaryBinary = join(folder, `.cloudflared-${nonce}${suffix}`)
   const temporaryArchive = join(folder, `.cloudflared-${nonce}.tgz`)

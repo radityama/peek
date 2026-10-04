@@ -6,6 +6,7 @@ import type {
   TunnelProvider,
   TunnelSession,
 } from '../../../src/tunnel/types.js'
+import { PeekError } from '../../../src/utils/errors.js'
 
 function journal(record: Record<string, unknown>): void {
   const path = process.env.PEEK_TEST_JOURNAL
@@ -25,6 +26,14 @@ export function prepareFixtureProvider(
 ): TunnelProvider {
   options.signal.throwIfAborted()
   journal({ role: 'preparation', originHostHeader: options.originHostHeader })
+  if (process.env.PEEK_TEST_PREPARATION_FAILURE === '1') {
+    throw new PeekError(
+      'CLOUDFLARED_INSTALL_ERROR',
+      'Fixture tunnel engine is unavailable.',
+      'Retry tunnel preparation.',
+      new Error('fixture cache cause'),
+    )
+  }
   return new FixtureProvider(options.originHostHeader, options.signal)
 }
 

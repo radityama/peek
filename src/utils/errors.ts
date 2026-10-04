@@ -1,6 +1,7 @@
 export type PeekErrorCode =
   | 'PROJECT_NOT_FOUND'
   | 'PROJECT_INVALID'
+  | 'CONFIG_ERROR'
   | 'DEV_SCRIPT_NOT_FOUND'
   | 'PACKAGE_MANAGER_ERROR'
   | 'SERVER_START_ERROR'
@@ -27,6 +28,10 @@ export class PeekError extends Error {
     this.code = code
     this.hint = hint
   }
+}
+
+export function errorExitCode(error: unknown): 1 | 2 {
+  return error instanceof PeekError && error.code === 'USAGE_ERROR' ? 2 : 1
 }
 
 export function formatError(error: unknown, verbose = false): string {

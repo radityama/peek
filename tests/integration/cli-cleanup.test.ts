@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { runCli } from '../../src/cli-command.js'
+import { type CliDependencies, runCli } from '../../src/cli-command.js'
 import { type RunOptions, runPeek } from '../../src/core/run.js'
 import type { TunnelProvider } from '../../src/tunnel/types.js'
 import { PeekError } from '../../src/utils/errors.js'
@@ -12,13 +12,19 @@ interface CapturedCli {
   exitCode: typeof process.exitCode
 }
 
-async function captureCli(provider: TunnelProvider): Promise<CapturedCli> {
+async function captureCli(
+  provider: TunnelProvider,
+  rawArgs: string[] = ['--json', '--', process.execPath, '-e', ''],
+  doctor?: CliDependencies['doctor'],
+  onStdout?: (chunk: string) => void,
+): Promise<CapturedCli> {
   let stdout = ''
   let stderr = ''
   const previousExitCode = process.exitCode
   const writeOut = vi
     .spyOn(process.stdout, 'write')
     .mockImplementation((chunk) => {
+      onStdout?.(String(chunk))
       stdout += String(chunk)
       return true
     })
@@ -30,8 +36,9 @@ async function captureCli(provider: TunnelProvider): Promise<CapturedCli> {
     })
   process.exitCode = undefined
   try {
-    await runCli(['--json', '--', process.execPath, '-e', ''], {
+    await runCli(rawArgs, {
       prepareProvider: async () => provider,
+      ...(doctor ? { doctor } : {}),
     })
     return { stdout, stderr, exitCode: process.exitCode }
   } finally {
@@ -176,3 +183,61 @@ it('contains final cleanup failure after successful core completion', async () =
   ])
   expect(result.stderr).toBe('')
 })
+
+it('retains failed live-doctor checks after successful requested preview stop', async () => {
+  vi.mocked(runPeek).mockImplementation(requestedCompletion)
+  const provider = providerWithCleanup()
+  const result = await captureCli(
+    provider,
+    ['doctor', '--live', '--json'],
+    async () => [
+      {
+        name: 'command',
+        status: 'fail',
+        message: 'Selected command is unavailable.',
+        remedy: 'Install the command.',
+      },
+    ],
+  )
+  expect(result.exitCode).toBe(1)
+  expect(errors(result)).toEqual([])
+  expect(result.stderr).toBe('')
+  expect(provider.disconnect).toHaveBeenCalledOnce()
+})
+
+it.each([
+  { name: 'first signal', status: 130 },
+  { name: 'primary misuse', status: 2 },
+])(
+  'preserves $name status when cleanup diagnostic rendering throws once',
+  async ({ status }) => {
+    vi.mocked(runPeek).mockImplementation(async ({ lifecycle }) => {
+      if (status === 130) {
+        lifecycle.requestStop(130)
+        await lifecycle.stop()
+        lifecycle.requestStop(143)
+      } else {
+        throw new PeekError(
+          'USAGE_ERROR',
+          'Primary misuse.',
+          'Fix the arguments.',
+        )
+      }
+    })
+    const provider = providerWithCleanup(new Error('cleanup failed'))
+    let failedWrite = false
+    const result = await captureCli(provider, undefined, undefined, (chunk) => {
+      if (!failedWrite && chunk.includes('Tunnel cleanup failed')) {
+        failedWrite = true
+        throw new Error('cleanup renderer failure')
+      }
+    })
+    expect(failedWrite).toBe(true)
+    expect(result.exitCode).toBe(status)
+    expect(errors(result).at(-1)?.message).toBe(
+      'Peek failed unexpectedly. Run peek --verbose for details.',
+    )
+    expect(result.stderr).toBe('')
+    expect(provider.disconnect).toHaveBeenCalledOnce()
+  },
+)

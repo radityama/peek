@@ -73,10 +73,9 @@ order. A cleanup-only failure emits one. Do not treat the last event as a
 successful shutdown marker or assume an exact transcript for independent
 diagnostics.
 
-Current exit statuses are 0 for successful completion, 1 for ordinary failure,
-2 for CLI misuse, 130 for SIGINT, and 143 for SIGTERM. Live doctor requests a
-normal stop after its checks. Peek's error/exit hardening phase may refine this
-pre-1.0 policy; see release notes for changes.
+See [exit statuses and diagnostic precedence](CLI.md#exit-statuses-and-diagnostics).
+Live doctor requests a normal stop after its checks. Message prose can improve
+within the pre-1.0 policy above without changing event shape or schema version.
 
 ## Trusted configuration
 

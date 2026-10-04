@@ -13,7 +13,7 @@ export async function loadConfig(cwd: string): Promise<PeekConfig | undefined> {
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined
     throw new PeekError(
-      'PROJECT_INVALID',
+      'CONFIG_ERROR',
       `Peek could not access ${configFile}.`,
       'Fix the configuration file permissions or remove it.',
       cause,
@@ -24,7 +24,7 @@ export async function loadConfig(cwd: string): Promise<PeekConfig | undefined> {
     value = await createJiti(import.meta.url).import(path, { default: true })
   } catch (cause) {
     throw new PeekError(
-      'PROJECT_INVALID',
+      'CONFIG_ERROR',
       `Peek could not load ${configFile}.`,
       'Fix the configuration file or remove it to use automatic detection.',
       cause,
@@ -80,7 +80,7 @@ export function validateConfig(value: unknown): PeekConfig {
 
 function invalidConfig(message: string): PeekError {
   return new PeekError(
-    'PROJECT_INVALID',
+    'CONFIG_ERROR',
     `Invalid ${configFile}: ${message}`,
     'Fix the configuration file or remove it to use automatic detection.',
   )

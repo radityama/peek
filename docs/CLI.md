@@ -29,6 +29,48 @@ Without `--qr` or `--no-qr`, Peek shows a QR code when terminal size permits.
 The HTTPS URL always appears as text. `--qr` cannot force an unusable QR into
 a narrow or noninteractive terminal.
 
+## Argument and output selection
+
+Help (`--help` or `-h`) and version (`--version` or `-v`) do not load project
+config or start a dev server/tunnel. Help takes precedence when both are
+requested. Peek accepts them with output flags and the dev/doctor prefixes.
+
+`--json` and `--json=true` select JSON; `--json=false` and `--no-json` select
+human output. Repeated positive/assigned JSON values use the last value.
+The current parser applies explicit `--no-json` after positive flags, so
+negation wins in either order. All flags before `--` use the same parser for
+static output and execution. A string option consumes its next value even
+when that value looks like another flag. Put Peek flags before `--`; tokens
+after it belong to the application unchanged.
+
+## Exit statuses and diagnostics
+
+| Status | Meaning |
+| --- | --- |
+| 0 | Successful information/completion or requested stop; doctor has no failed check. |
+| 1 | Project/config, command, dev, discovery, provider, cleanup or unexpected failure; doctor has a failed check. |
+| 2 | CLI misuse: unknown option/argument, invalid flag port or incompatible options. |
+| 130 | The first termination request was SIGINT. |
+| 143 | The first termination request was SIGTERM. |
+
+The first signal retains its status through cleanup and repeated signals.
+Otherwise the primary failure sets the status; a cleanup-only failure uses 1.
+Peek waits for bounded cleanup before returning. A requested stop by live doctor
+is successful when no check failed; failed checks retain status 1. Doctor
+warnings alone, including an unreachable HTTPS check, do not cause status 1.
+
+Internally, PeekError distinguishes config, project/package manager, dev,
+discovery/port, provider and cleanup failures. These codes are not JSON fields
+or distinct process statuses. Default diagnostics include actionable remedies;
+`--verbose` adds causes without printing stacks. Doctor preserves a failed
+check's original remedy and adds failed-check detail only with `--verbose`.
+Message prose is not stable API. See the [JSON contract](JSON.md) for event
+and pre-1.0 compatibility rules.
+
+If argument parsing fails before an output mode can be selected, stdout stays
+empty and Peek writes its formatted diagnostic to stderr with status 1.
+Ordinary parsed JSON failures remain error events on stdout.
+
 ## Examples
 
 ```sh
@@ -100,7 +142,7 @@ package manager detection, the selected command, config, the pinned
 cloudflared version and cached binary checksum, HTTPS access, and
 socket-inspection tools. The HTTPS check does not prove that outbound tunnel
 port 7844 is open. `--verbose` adds safe detail about the cache and network
-checks. `--live` also starts a
+checks and includes causes for failed checks. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
 receive no status claim.

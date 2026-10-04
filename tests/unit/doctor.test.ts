@@ -97,3 +97,52 @@ it('reports an invalid config with a remedy', async () => {
     await rm(cwd, { recursive: true, force: true })
   }
 })
+
+it.each([false, true])(
+  'preserves config remedies and controls causes (verbose: %s)',
+  async (verbose) => {
+    const cwd = await mkdtemp(join(tmpdir(), 'peek-doctor-'))
+    try {
+      await writeFile(
+        join(cwd, 'peek.config.ts'),
+        'const failure = new Error("config cause marker"); failure.stack = "CONFIG_STACK_MARKER"; throw failure',
+      )
+      const checks = await runDoctor({
+        cwd,
+        verbose,
+        networkCheck: async () => false,
+      })
+      const check = checks.find((item) => item.name === 'config')
+      expect(check).toMatchObject({
+        status: 'fail',
+        message: 'Peek could not load peek.config.ts.',
+        remedy:
+          'Fix the configuration file or remove it to use automatic detection.',
+      })
+      if (verbose)
+        expect(check?.detail).toContain('Details: config cause marker')
+      else expect(check?.detail).toBeUndefined()
+      expect(JSON.stringify(checks)).not.toContain('CONFIG_STACK_MARKER')
+      if (!verbose)
+        expect(JSON.stringify(checks)).not.toContain('config cause marker')
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  },
+)
+
+it('retains the missing-project remedy for project and command checks', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'peek-doctor-'))
+  try {
+    const checks = await runDoctor({ cwd, networkCheck: async () => true })
+    for (const name of ['project', 'command']) {
+      expect(checks.find((check) => check.name === name)).toMatchObject({
+        status: 'fail',
+        message: "Peek couldn't read package.json in this directory.",
+        remedy: 'Run Peek from a Node.js project or use peek -- <command>.',
+      })
+    }
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})

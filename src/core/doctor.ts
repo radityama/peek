@@ -4,6 +4,7 @@ import packageJson from '../../package.json' with { type: 'json' }
 import { inspectCachedCloudflared } from '../cloudflared/binary.js'
 import { CLOUDFLARED_VERSION } from '../cloudflared/platform.js'
 import type { PeekConfig } from '../config.js'
+import { formatError, PeekError } from '../utils/errors.js'
 import { loadConfig } from './config.js'
 import { readProject } from './project.js'
 
@@ -13,6 +14,21 @@ export interface DoctorCheck {
   message: string
   remedy?: string
   detail?: string
+}
+
+function failedCheck(
+  name: string,
+  error: unknown,
+  remedy: string,
+  verbose: boolean,
+): DoctorCheck {
+  return {
+    name,
+    status: 'fail',
+    message: error instanceof PeekError ? error.message : formatError(error),
+    remedy: error instanceof PeekError ? error.hint : remedy,
+    ...(verbose ? { detail: formatError(error, true) } : {}),
+  }
 }
 
 export interface DoctorOptions {
@@ -60,12 +76,14 @@ export async function runDoctor(
       message: config ? 'peek.config.ts is valid.' : 'No config is needed.',
     })
   } catch (error) {
-    checks.push({
-      name: 'config',
-      status: 'fail',
-      message: String(error),
-      remedy: 'Fix or remove peek.config.ts.',
-    })
+    checks.push(
+      failedCheck(
+        'config',
+        error,
+        'Fix or remove peek.config.ts.',
+        options.verbose === true,
+      ),
+    )
   }
 
   try {
@@ -91,18 +109,16 @@ export async function runDoctor(
           },
     )
   } catch (error) {
-    checks.push({
-      name: 'project',
-      status: 'fail',
-      message: String(error),
-      remedy: 'Add a dev script or configure a command.',
-    })
-    checks.push({
-      name: 'command',
-      status: 'fail',
-      message: String(error),
-      remedy: 'Add a dev script or configure a command.',
-    })
+    for (const name of ['project', 'command']) {
+      checks.push(
+        failedCheck(
+          name,
+          error,
+          'Add a dev script or configure a command.',
+          options.verbose === true,
+        ),
+      )
+    }
   }
 
   try {
@@ -131,12 +147,14 @@ export async function runDoctor(
           },
     )
   } catch (error) {
-    checks.push({
-      name: 'cloudflared',
-      status: 'fail',
-      message: String(error),
-      remedy: 'Use a supported platform and architecture.',
-    })
+    checks.push(
+      failedCheck(
+        'cloudflared',
+        error,
+        'Use a supported platform and architecture.',
+        options.verbose === true,
+      ),
+    )
   }
 
   try {

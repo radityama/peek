@@ -160,9 +160,11 @@ a distinct cleanup error, in that order. Cleanup alone is rendered once.
 Default output contains the message and remedy; causes appear only with
 `--verbose`. JSON errors remain event objects with parseable stdout, without
 fallback stacks or human logs. See the [JSON event contract](JSON.md) for the
-wire shape and stream behavior. Ordinary failures and cleanup failure after
-otherwise successful completion use exit 1. Signals retain 130/143; successful
-completion and the live doctor's requested stop remain 0. CLI misuse remains 2.
+wire shape and stream behavior. The [CLI exit policy](CLI.md#exit-statuses-and-diagnostics) owns status meanings,
+precedence for the first signal and primary failure, and doctor warning behavior.
+Configuration failures use the internal CONFIG_ERROR; package.json failures
+remain project errors. The CLI shares one Citty parse for help/version and
+execution, and static output returns normally so stdout can drain.
 
 ### Provider and session boundary
 
