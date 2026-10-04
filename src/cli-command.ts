@@ -334,15 +334,15 @@ export async function runCli(
       const cleanup = await lifecycle.stop(
         primary ? { kind: 'failed', error: primary.error } : undefined,
       )
-      if (cleanup.error && cleanup.error !== rendered?.error) {
-        output.error(formatError(cleanup.error, args.verbose === true))
-      }
       if (lifecycle.signalExitCode !== undefined) {
         process.exitCode = lifecycle.signalExitCode
       } else if (primary || cleanup.error) {
         process.exitCode = errorExitCode(
           primary ? primary.error : cleanup.error,
         )
+      }
+      if (cleanup.error && cleanup.error !== rendered?.error) {
+        output.error(formatError(cleanup.error, args.verbose === true))
       }
     }
   }

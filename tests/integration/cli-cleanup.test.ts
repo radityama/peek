@@ -16,6 +16,7 @@ async function captureCli(
   provider: TunnelProvider,
   rawArgs: string[] = ['--json', '--', process.execPath, '-e', ''],
   doctor?: CliDependencies['doctor'],
+  onStdout?: (chunk: string) => void,
 ): Promise<CapturedCli> {
   let stdout = ''
   let stderr = ''
@@ -23,6 +24,7 @@ async function captureCli(
   const writeOut = vi
     .spyOn(process.stdout, 'write')
     .mockImplementation((chunk) => {
+      onStdout?.(String(chunk))
       stdout += String(chunk)
       return true
     })
@@ -202,3 +204,40 @@ it('retains failed live-doctor checks after successful requested preview stop', 
   expect(result.stderr).toBe('')
   expect(provider.disconnect).toHaveBeenCalledOnce()
 })
+
+it.each([
+  { name: 'first signal', status: 130 },
+  { name: 'primary misuse', status: 2 },
+])(
+  'preserves $name status when cleanup diagnostic rendering throws once',
+  async ({ status }) => {
+    vi.mocked(runPeek).mockImplementation(async ({ lifecycle }) => {
+      if (status === 130) {
+        lifecycle.requestStop(130)
+        await lifecycle.stop()
+        lifecycle.requestStop(143)
+      } else {
+        throw new PeekError(
+          'USAGE_ERROR',
+          'Primary misuse.',
+          'Fix the arguments.',
+        )
+      }
+    })
+    const provider = providerWithCleanup(new Error('cleanup failed'))
+    let failedWrite = false
+    const result = await captureCli(provider, undefined, undefined, (chunk) => {
+      if (!failedWrite && chunk.includes('Tunnel cleanup failed')) {
+        failedWrite = true
+        throw new Error('cleanup renderer failure')
+      }
+    })
+    expect(failedWrite).toBe(true)
+    expect(result.exitCode).toBe(status)
+    expect(errors(result).at(-1)?.message).toBe(
+      'Peek failed unexpectedly. Run peek --verbose for details.',
+    )
+    expect(result.stderr).toBe('')
+    expect(provider.disconnect).toHaveBeenCalledOnce()
+  },
+)
