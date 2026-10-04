@@ -55,8 +55,9 @@ after it belong to the application unchanged.
 
 The first signal retains its status through cleanup and repeated signals.
 Otherwise the primary failure sets the status; a cleanup-only failure uses 1.
-A requested stop by live doctor is successful. Doctor warnings alone,
-including an unreachable HTTPS check, do not cause status 1.
+Peek waits for bounded cleanup before returning. A requested stop by live doctor
+is successful when no check failed; failed checks retain status 1. Doctor
+warnings alone, including an unreachable HTTPS check, do not cause status 1.
 
 Internally, PeekError distinguishes config, project/package manager, dev,
 discovery/port, provider and cleanup failures. These codes are not JSON fields
