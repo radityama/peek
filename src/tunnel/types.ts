@@ -13,3 +13,10 @@ export interface TunnelProvider {
   disconnect(): Promise<void>
   forceDisconnect?(): void
 }
+
+export interface ProviderPreparation {
+  signal: AbortSignal
+  onDownload: () => void
+  onDiagnostic: ((line: string) => void) | undefined
+  originHostHeader: 'localhost' | undefined
+}

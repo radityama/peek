@@ -291,7 +291,7 @@ only its files plus the plan with `refactor: tunnel an explicit loopback target`
 `tests/fixtures/cli/provider.ts`, `tests/integration/lifecycle.test.ts`;
 create `src/tunnel/prepare.ts`.
 
-- [ ] **Step 1: Add the generic-provider integration assertion.**
+- [x] **Step 1: Add the generic-provider integration assertion.**
 
 Import TunnelProvider into `tests/integration/lifecycle.test.ts`:
 
@@ -361,7 +361,7 @@ Run `pnpm test tests/integration/lifecycle.test.ts`. Expect PASS after Task 1.
 This is a missing contract assertion, not a new behavior; do not invent a
 failing result. Record the actual command/output.
 
-- [ ] **Step 2: Move the existing preparation implementation.**
+- [x] **Step 2: Move the existing preparation implementation.**
 
 Append this complete interface to `src/tunnel/types.ts`:
 
@@ -422,7 +422,7 @@ import type {
 } from '../../../src/tunnel/types.js'
 ```
 
-- [ ] **Step 3: Verify the move and commit.**
+- [x] **Step 3: Verify the move and commit.**
 
 Run `pnpm typecheck`, then `pnpm test tests/integration/lifecycle.test.ts
 tests/integration/cli-cleanup.test.ts tests/integration/cli-preview.test.ts

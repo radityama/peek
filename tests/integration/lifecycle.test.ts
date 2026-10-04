@@ -11,6 +11,7 @@ import {
   CloudflareProvider,
   type TunnelChild,
 } from '../../src/tunnel/cloudflare.js'
+import type { TunnelProvider } from '../../src/tunnel/types.js'
 import { checkForUpdate } from '../../src/update/check.js'
 import { createUpdateNotice } from '../../src/update/notice.js'
 import { PeekError } from '../../src/utils/errors.js'
@@ -658,3 +659,67 @@ function isRunning(pid: number): boolean {
     return false
   }
 }
+
+it('passes the verified loopback URL to a generic provider', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  let target: URL | undefined
+  let selectedPort: number | undefined
+  let devPid: number | undefined
+  let markReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve
+  })
+  const provider: TunnelProvider = {
+    name: 'generic-test',
+    connect: async (options) => {
+      options.signal.throwIfAborted()
+      target = options.target
+      return {
+        url: 'https://preview.peek.test',
+        exited: new Promise<never>(() => {}),
+      }
+    },
+    disconnect: vi.fn(async () => {}),
+  }
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider,
+    onServerReady: (port) => {
+      selectedPort = port
+    },
+    onReady: markReady,
+    onDevOutput: (_stream, text) => {
+      const match = /PID: (\d+)/.exec(text)
+      if (match?.[1]) devPid = Number(match[1])
+    },
+  })
+  try {
+    await Promise.race([
+      ready,
+      running.then(() => {
+        throw new Error('Preview stopped before readiness')
+      }),
+    ])
+    expect(selectedPort).toBeTypeOf('number')
+    expect(target).toBeInstanceOf(URL)
+    expect(target?.href).toBe(`http://127.0.0.1:${selectedPort}/`)
+    const address = target?.href ?? ''
+    const response = await fetch(address, { signal: AbortSignal.timeout(3000) })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe('peek fixture ready')
+    lifecycle.requestStop()
+    await expect(running).resolves.toBeUndefined()
+    expect(provider.disconnect).toHaveBeenCalled()
+    expect(devPid).toBeTypeOf('number')
+    expect(isRunning(devPid ?? 0)).toBe(false)
+    await expect(
+      fetch(address, { signal: AbortSignal.timeout(1000) }),
+    ).rejects.toThrow()
+  } finally {
+    lifecycle.requestStop()
+    await running.catch(() => {})
+  }
+})
