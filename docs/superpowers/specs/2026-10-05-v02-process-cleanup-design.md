@@ -1,7 +1,7 @@
 # v0.2 Adversarial Process Cleanup
 
-Status: approach approved in conversation on 2026-10-05. Written-spec review
-precedes implementation planning.
+Status: approach and written spec approved in conversation on 2026-10-05.
+Implementation follows the [process cleanup plan](../plans/2026-10-05-v02-process-cleanup.md).
 
 Baseline: main `2e1569b`, package `@usepeek/peek` 0.2.2. PRs #10 through #15
 are merged with required and postmerge CI passing. Branch:
