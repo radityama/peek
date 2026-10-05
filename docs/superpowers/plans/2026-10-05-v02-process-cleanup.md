@@ -157,6 +157,23 @@ begin the bounded root-status assertion at the journalled root-exiting checkpoin
 rather than increasing an arbitrary process-start timeout. Cancel the losing
 timer in GREEN so the test owns no delayed callback after completion.
 
+Expose the test-only fixture selection in CliOptions and startCli. Rename the
+existing module-level fixture constant to ordinaryFixture, then choose the
+local value before creating the temporary wrapper or command:
+
+```ts
+fixture?: 'ordinary' | 'adversarial'
+```
+
+```ts
+const fixture = options.fixture === 'adversarial'
+  ? fileURLToPath(new URL('../fixtures/cli/adversarial.mjs', import.meta.url))
+  : ordinaryFixture
+```
+
+The wrapper and explicit command must both use that selected local file.
+The default remains the ordinary fixture; production CLI code has no test flag.
+
 - [ ] **Step 2: Run RED**
 
 Run `pnpm exec vitest run tests/integration/process.test.ts -t 'root exit'`.
