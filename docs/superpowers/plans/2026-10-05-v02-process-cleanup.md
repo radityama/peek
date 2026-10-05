@@ -189,14 +189,24 @@ const exit = new Promise<ProcessExit>((resolve) => {
   }
   child.once('exit', onExit)
   child.once('error', onError)
+  void child.then(() => {}, (error: unknown) => {
+    finish({
+      exitCode: null,
+      failed: true,
+      spawnFailed: false,
+      message: `Development command observation failed: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  })
 })
-void child.then(() => {}, () => {})
 ```
 
 Return `exit` as DevProcess.exit. Preserve the resolver used by
 isMissingWindowsCommand. Add a real unavailable-command test and a normal
 zero-exit test before changing error behavior; assert spawnFailed/message
 and stable classification rather than an Execa-specific prose string.
+The resource adapter in Task 2 must retain unexpected Execa completion errors
+even if root status was already reported; observing them is not permission to
+hide a distinct resource observation failure.
 
 - [ ] **Step 4: Verify and commit**
 
