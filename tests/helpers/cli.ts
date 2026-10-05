@@ -24,6 +24,7 @@ export interface JournalRecord {
 }
 
 export interface CliOptions {
+  fixture?: 'ordinary' | 'adversarial'
   entry?: 'injected' | 'shipped'
   outputMode?: 'json' | 'human'
   packageJson?: string
@@ -78,7 +79,7 @@ export interface CliHandle {
   dispose(): Promise<void>
 }
 
-const fixture = fileURLToPath(
+const ordinaryFixture = fileURLToPath(
   new URL('../fixtures/cli/server.mjs', import.meta.url),
 )
 const transport = fileURLToPath(
@@ -89,6 +90,12 @@ const shippedEntry = fileURLToPath(
 )
 
 export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
+  const fixture =
+    options.fixture === 'adversarial'
+      ? fileURLToPath(
+          new URL('../fixtures/cli/adversarial.mjs', import.meta.url),
+        )
+      : ordinaryFixture
   const directory = await mkdtemp(join(tmpdir(), 'peek cli-'))
   const journal = join(directory, 'journal.jsonl')
   let allocatedChild: ChildProcess | undefined

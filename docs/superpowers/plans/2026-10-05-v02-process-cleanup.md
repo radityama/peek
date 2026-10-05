@@ -81,7 +81,7 @@ extend the control protocol; do not replace the ordinary HTTP/WS fixture.
 
 ```js
 import { spawn } from 'node:child_process'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
@@ -93,7 +93,14 @@ const journal = (record) => appendFileSync(
 if (process.argv.includes('--descendant')) {
   journal({ role: 'dev-descendant', pid: process.pid })
   process.send?.({ type: 'descendant-ready' })
-  setInterval(() => {}, 1000)
+  const lifetime = setInterval(() => {
+    const stopFile = process.env.PEEK_TEST_STOP_FILE
+    if (stopFile && existsSync(stopFile)) {
+      clearInterval(lifetime)
+      journal({ role: 'descendant-fallback-stop', pid: process.pid })
+      process.exit(0)
+    }
+  }, 25)
 } else {
   journal({ role: 'dev', pid: process.pid })
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--descendant'], {
@@ -127,10 +134,11 @@ const fixture = fileURLToPath(new URL('../fixtures/cli/adversarial.mjs', import.
 it('reports root exit before an inherited pipe closes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'peek-root-exit-'))
   const journal = join(directory, 'journal.jsonl')
+  const stopFile = join(directory, 'stop-descendant')
   await writeFile(journal, '')
   const dev = spawnDev({
     file: process.execPath,
-    args: ['--input-type=module', '-e', `process.env.PEEK_TEST_JOURNAL=${JSON.stringify(journal)}; await import(${JSON.stringify(pathToFileURL(fixture).href)})`],
+    args: ['--input-type=module', '-e', `process.env.PEEK_TEST_JOURNAL=${JSON.stringify(journal)}; process.env.PEEK_TEST_STOP_FILE=${JSON.stringify(stopFile)}; await import(${JSON.stringify(pathToFileURL(fixture).href)})`],
   }, directory)
   try {
     const result = await Promise.race([
@@ -140,11 +148,8 @@ it('reports root exit before an inherited pipe closes', async () => {
     expect(result).toMatchObject({ exitCode: 7, failed: true, spawnFailed: false })
     expect(await readFile(journal, 'utf8')).toContain('root-exiting')
   } finally {
+    await writeFile(stopFile, 'stop')
     dev.kill('SIGKILL')
-    const records = (await readFile(journal, 'utf8')).split('\n').filter(Boolean).map((line) => JSON.parse(line))
-    for (const record of records.reverse()) {
-      if (record.pid) { try { process.kill(record.pid, 'SIGKILL') } catch {} }
-    }
     await delay(50)
     await rm(directory, { recursive: true, force: true })
   }
@@ -156,6 +161,9 @@ checkpoints before assertions. If slow startup consumes the observation window,
 begin the bounded root-status assertion at the journalled root-exiting checkpoint
 rather than increasing an arbitrary process-start timeout. Cancel the losing
 timer in GREEN so the test owns no delayed callback after completion.
+Bound and verify pipe closure before removing the fixture directory in fallback.
+The stop file addresses this particular fixture, not a numeric process identity.
+Do not kill journalled PID numbers after their original process already exited.
 
 Expose the test-only fixture selection in CliOptions and startCli. Rename the
 existing module-level fixture constant to ordinaryFixture, then choose the
@@ -187,10 +195,11 @@ Keep an observed Execa result for its output/diagnostic and cleanup internals.
 Remove only these named adapter-owned listeners when root status settles.
 
 ```ts
+const nativeChild = child.nodeChildProcess
 const exit = new Promise<ProcessExit>((resolve) => {
   const finish = (result: ProcessExit): void => {
-    child.removeListener('exit', onExit)
-    child.removeListener('error', onError)
+    nativeChild.removeListener('exit', onExit)
+    nativeChild.removeListener('error', onError)
     resolve(result)
   }
   const onExit = (exitCode: number | null, signal: NodeJS.Signals | null): void => {
@@ -204,9 +213,17 @@ const exit = new Promise<ProcessExit>((resolve) => {
   const onError = (error: Error): void => {
     finish({ exitCode: null, failed: true, spawnFailed: true, message: error.message })
   }
-  child.once('exit', onExit)
-  child.once('error', onError)
-  void child.then(() => {}, (error: unknown) => {
+  nativeChild.once('exit', onExit)
+  nativeChild.once('error', onError)
+  void child.then((result) => {
+    finish({
+      exitCode: result.exitCode ?? null,
+      failed: result.failed,
+      spawnFailed: result.failed && result.exitCode === undefined &&
+        result.signal === undefined && !result.timedOut && !result.isCanceled,
+      ...(result.shortMessage ? { message: result.shortMessage } : {}),
+    })
+  }, (error: unknown) => {
     finish({
       exitCode: null,
       failed: true,
@@ -221,6 +238,26 @@ Return `exit` as DevProcess.exit. Preserve the resolver used by
 isMissingWindowsCommand. Add a real unavailable-command test and a normal
 zero-exit test before changing error behavior; assert spawnFailed/message
 and stable classification rather than an Execa-specific prose string.
+Keep Execa's existing synchronous validation throw for a NUL argument.
+Use a POSIX oversized argument to exercise an actual post-validation Node spawn
+failure: installed Execa returns a failed result without a native event or PID.
+This must settle rather than wait for events from its dummy native child:
+
+```ts
+expect(() => spawnDev({ file: process.execPath, args: ['\0'] }, process.cwd()))
+  .toThrow(/null bytes/)
+```
+
+```ts
+it.skipIf(process.platform === 'win32')('settles a synchronous POSIX spawn failure without native events', async () => {
+  const dev = spawnDev({
+    file: process.execPath,
+    args: ['-e', 'process.exit(0)', 'x'.repeat(3 * 1024 * 1024)],
+  }, process.cwd())
+  await expect(dev.exit).resolves.toMatchObject({ failed: true, spawnFailed: true })
+})
+```
+
 The resource adapter in Task 2 must retain unexpected Execa completion errors
 even if root status was already reported; observing them is not permission to
 hide a distinct resource observation failure.
