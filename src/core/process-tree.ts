@@ -273,11 +273,11 @@ interface WindowsMember {
   born: string
 }
 
-const windowsSnapshot = `@(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
+const windowsSnapshot = `ConvertTo-Json -Compress -InputObject @(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
   if ($null -ne $_.CreationDate) {
     @{pid=[int]$_.ProcessId;parent=[int]$_.ParentProcessId;born=$_.CreationDate.ToUniversalTime().Ticks.ToString()}
   }
-}) | ConvertTo-Json -Compress`
+})`
 
 function windowsArgs(script: string): string[] {
   return [
@@ -337,18 +337,30 @@ function windowsMembers(output: string): WindowsMember[] {
   })
 }
 
-function windowsTermination(
-  known: readonly WindowsMember[],
-  root: number,
-): string {
+export function windowsSelection(known: readonly WindowsMember[]): string {
   const identities = Buffer.from(JSON.stringify(known), 'utf8').toString(
     'base64',
   )
-  // Open the handle before checking CIM identity. Kill uses that process object
-  // even if the original process exits between the identity check and termination.
+  // Windows PowerShell 5.1 emits a decoded JSON array as one pipeline object.
+  // Assign it first, then enumerate and validate rows before any PID casts.
   return `
-$known = @([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${identities}')) | ConvertFrom-Json)
-$all = @(${windowsSnapshot} | ConvertFrom-Json)
+function Read-PeekProcessRows([string]$json) {
+  $decoded = ConvertFrom-Json -InputObject $json
+  if ($null -eq $decoded) { throw 'Windows process inspection returned invalid creation identity evidence.' }
+  foreach ($row in @($decoded)) {
+    $ticks = 0L
+    if ($row -isnot [pscustomobject] -or
+        ($row.pid -isnot [int] -and $row.pid -isnot [long]) -or $row.pid -lt 0 -or $row.pid -gt [int]::MaxValue -or
+        ($row.parent -isnot [int] -and $row.parent -isnot [long]) -or $row.parent -lt 0 -or $row.parent -gt [int]::MaxValue -or
+        $row.born -isnot [string] -or $row.born -notmatch '^[0-9]+$' -or ![long]::TryParse($row.born, [ref]$ticks)) {
+      throw 'Windows process inspection returned invalid creation identity evidence.'
+    }
+    $row
+  }
+}
+$known = @(Read-PeekProcessRows ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${identities}'))))
+$allJson = ${windowsSnapshot}
+$all = @(Read-PeekProcessRows $allJson)
 $selected = @{}
 foreach ($item in $known) {
   foreach ($row in $all) { if ($row.pid -eq $item.pid -and $row.born -eq $item.born) { $selected[[int]$row.pid] = $row } }
@@ -361,6 +373,16 @@ do {
     }
   }
 } while ($added)
+`
+}
+
+function windowsTermination(
+  known: readonly WindowsMember[],
+  root: number,
+): string {
+  // Open the handle before checking CIM identity. Kill uses that process object
+  // even if the original process exits between the identity check and termination.
+  return `${windowsSelection(known)}
 $held = @()
 $rootKilled = $false
 try {
