@@ -87,14 +87,13 @@ async function inspect(group: number, signal: AbortSignal): Promise<Member[]> {
     })
   }
   return new Promise((resolve, reject) => {
-    execFile(
+    const inspector = execFile(
       'ps',
       psArgs,
       {
         encoding: 'utf8',
         timeout: 500,
         killSignal: 'SIGKILL',
-        signal,
         maxBuffer: 4 * 1024 * 1024,
         env: { ...process.env, LC_ALL: 'C' },
       },
@@ -109,7 +108,23 @@ async function inspect(group: number, signal: AbortSignal): Promise<Member[]> {
         }
       },
     )
+    cancelJobOnAbort(inspector, signal)
   })
+}
+
+export function cancelJobOnAbort(
+  child: ChildProcess,
+  signal: AbortSignal,
+): void {
+  // execFile does not forward killSignal to its spawn AbortSignal handler.
+  // Use the owned handle so cancellation cannot leave an ignored SIGTERM job.
+  const abort = (): void => {
+    child.kill('SIGKILL')
+  }
+  const remove = (): void => signal.removeEventListener('abort', abort)
+  child.once('close', remove)
+  signal.addEventListener('abort', abort, { once: true })
+  if (signal.aborted) abort()
 }
 
 interface GroupInspection {
@@ -176,6 +191,7 @@ export function ownPosixTree(
   }
   const observe = async (): Promise<void> => {
     while (
+      !owner.signal.aborted &&
       !released &&
       !stopped &&
       failure === undefined &&
@@ -208,6 +224,7 @@ export function ownPosixTree(
   }
   const observation = observe()
   const abruptExit = (): void => {
+    owner.abort()
     if (released || stopped || group === undefined) return
     try {
       accept(inspection.snapshotSync(group))
@@ -275,20 +292,21 @@ function windowsArgs(script: string): string[] {
 }
 
 function windowsJob(script: string, signal: AbortSignal): Promise<string> {
+  signal.throwIfAborted()
   return new Promise((resolve, reject) => {
-    execFile(
+    const inspector = execFile(
       'powershell.exe',
       windowsArgs(script),
       {
         encoding: 'utf8',
         timeout: 1500,
         killSignal: 'SIGKILL',
-        signal,
         windowsHide: true,
         maxBuffer: 4 * 1024 * 1024,
       },
       (error, stdout) => (error ? reject(error) : resolve(stdout)),
     )
+    cancelJobOnAbort(inspector, signal)
   })
 }
 
@@ -399,6 +417,7 @@ export function ownWindowsTree(
   child.once('exit', onExit)
   const observe = async (): Promise<void> => {
     while (
+      !owner.signal.aborted &&
       !released &&
       !stopped &&
       failure === undefined &&
@@ -479,6 +498,7 @@ export function ownWindowsTree(
   }
   const observation = observe()
   const abruptExit = (): void => {
+    owner.abort()
     if (released || stopped || root === undefined || !initialized) return
     try {
       execFileSync(

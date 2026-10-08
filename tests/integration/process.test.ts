@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -190,7 +190,13 @@ it('reports root exit before an inherited pipe closes', async () => {
   }
 })
 
-async function controlledTree() {
+async function controlledTree(
+  options: {
+    checkpoint?: string
+    timeoutMs?: number
+    onSpawn?: (dev: DevProcess, directory: string) => void
+  } = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), 'peek-controlled-tree-'))
   const journal = join(directory, 'journal.jsonl')
   const stopFile = join(directory, 'stop-descendant')
@@ -207,41 +213,132 @@ async function controlledTree() {
     },
     directory,
   )
-  const deadline = Date.now() + 5000
-  while (
-    !(await readJournal(journal)).some(
-      (record) => record.role === 'root-waiting',
-    )
-  ) {
-    if (Date.now() >= deadline)
-      throw new Error('Missing controlled root checkpoint')
-    await delay(25)
-  }
-  const records = await readJournal(journal)
-  const descendant = records.find((record) => record.role === 'dev-descendant')
-  if (!descendant || dev.pid === undefined) {
-    throw new Error('Missing controlled process identities')
-  }
-  return {
-    dev,
-    rootPid: dev.pid,
-    descendant,
-    exitRoot: () => writeFile(exitFile, 'exit'),
-    async fallback() {
+  const fallback = async (): Promise<void> => {
+    let confirmed = false
+    try {
       await writeFile(stopFile, 'stop')
       await writeFile(exitFile, 'exit')
-      await dev.exit
       const deadline = Date.now() + 2000
-      while (processState(descendant.pid) === 'running') {
+      while (true) {
+        const records = await readJournal(journal)
+        if (
+          (dev.pid === undefined ||
+            records.some((record) => record.role === 'dev-descendant')) &&
+          (dev.pid === undefined || processState(dev.pid) !== 'running') &&
+          records.every((record) => processState(record.pid) !== 'running')
+        ) {
+          confirmed = true
+          break
+        }
         if (Date.now() >= deadline)
-          throw new Error('Controlled fixture fallback did not stop descendant')
+          throw new Error('Controlled fixture fallback did not stop resources')
         await delay(25)
       }
+    } finally {
       dev.dispose()
-      await rm(directory, { recursive: true, force: true })
-    },
+      try {
+        await waitForPipeClosure(dev)
+      } finally {
+        if (confirmed) await rm(directory, { recursive: true, force: true })
+      }
+    }
+  }
+  try {
+    options.onSpawn?.(dev, directory)
+    const deadline = Date.now() + (options.timeoutMs ?? 5000)
+    while (
+      !(await readJournal(journal)).some(
+        (record) => record.role === (options.checkpoint ?? 'root-waiting'),
+      )
+    ) {
+      if (Date.now() >= deadline)
+        throw new Error('Missing controlled root checkpoint')
+      await delay(25)
+    }
+    const records = await readJournal(journal)
+    const descendant = records.find(
+      (record) => record.role === 'dev-descendant',
+    )
+    if (!descendant || dev.pid === undefined) {
+      throw new Error('Missing controlled process identities')
+    }
+    return {
+      dev,
+      rootPid: dev.pid,
+      descendant,
+      exitRoot: () => writeFile(exitFile, 'exit'),
+      fallback,
+    }
+  } catch (error) {
+    try {
+      await fallback()
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Controlled fixture setup and teardown failed',
+      )
+    }
+    throw error
   }
 }
+
+it('cooperatively disposes controlled-tree resources when setup misses its checkpoint', async () => {
+  let spawned: DevProcess | undefined
+  let directory: string | undefined
+  const setup = controlledTree({
+    checkpoint: 'missing-checkpoint',
+    timeoutMs: 500,
+    onSpawn: (dev, path) => {
+      spawned = dev
+      directory = path
+    },
+  })
+  const regressionFallback = async (): Promise<void> => {
+    // Baseline RED must also leave no processes behind; this is not the assertion.
+    if (directory && spawned) {
+      await writeFile(join(directory, 'stop-descendant'), 'stop').catch(
+        () => {},
+      )
+      await writeFile(join(directory, 'exit-root'), 'exit').catch(() => {})
+      const deadline = Date.now() + 2000
+      while (true) {
+        const records = await readJournal(
+          join(directory, 'journal.jsonl'),
+        ).catch(() => [] as Record[])
+        if (
+          records.some((record) => record.role === 'dev-descendant') &&
+          (spawned.pid === undefined ||
+            processState(spawned.pid) !== 'running') &&
+          records.every((record) => processState(record.pid) !== 'running')
+        )
+          break
+        if (
+          !(await access(directory).then(
+            () => true,
+            () => false,
+          ))
+        )
+          break
+        if (Date.now() >= deadline)
+          throw new Error('Setup regression fallback did not stop descendants')
+        await delay(25)
+      }
+      spawned.dispose()
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+  try {
+    await expect(setup).rejects.toThrow('Missing controlled root checkpoint')
+    if (!spawned || !directory || spawned.pid === undefined)
+      throw new Error('Missing setup identity')
+    expect(processState(spawned.pid)).not.toBe('running')
+    expect(spawned.stdout.destroyed).toBe(true)
+    expect(spawned.stderr.destroyed).toBe(true)
+    await expect(access(directory)).rejects.toThrow()
+  } finally {
+    await regressionFallback()
+  }
+})
 
 it('releases piped handles and prevents repeated termination after disposal', async () => {
   const fixture = await controlledTree()

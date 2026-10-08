@@ -1,7 +1,11 @@
-import { ChildProcess } from 'node:child_process'
+import { ChildProcess, execFile } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ownPosixTree, ownWindowsTree } from '../../src/core/process-tree.js'
+import {
+  cancelJobOnAbort,
+  ownPosixTree,
+  ownWindowsTree,
+} from '../../src/core/process-tree.js'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -111,3 +115,76 @@ it('terminates tracked Windows root-first resources and preserves ancestry uncer
     expect(native.listenerCount('exit')).toBe(0)
   }
 })
+
+it.each(['posix', 'windows-before-initialization'] as const)(
+  'aborts a real in-flight inspector during abrupt %s owner exit',
+  async (platform) => {
+    const before = new Set(process.listeners('exit'))
+    let inspector: ChildProcess | undefined
+    let jobs = 0
+    let ready!: () => void
+    const started = new Promise<void>((resolve) => {
+      ready = resolve
+    })
+    let exited!: () => void
+    const closed = new Promise<void>((resolve) => {
+      exited = resolve
+    })
+    const job = (signal: AbortSignal): Promise<string> =>
+      new Promise((resolve, reject) => {
+        jobs += 1
+        inspector = execFile(
+          process.execPath,
+          [
+            '-e',
+            'process.on("SIGTERM", () => {}); console.log("inspector-ready"); setInterval(() => {}, 1000)',
+          ],
+          {
+            killSignal: 'SIGKILL',
+            timeout: 60_000,
+          },
+          (error, stdout) => (error ? reject(error) : resolve(stdout)),
+        )
+        cancelJobOnAbort(inspector, signal)
+        inspector.stdout?.once('data', ready)
+        inspector.once('close', exited)
+      })
+    const tree =
+      platform === 'posix'
+        ? ownPosixTree(child(), {
+            snapshotSync: (() => {
+              let initial = true
+              return () => {
+                if (initial) {
+                  initial = false
+                  return [root]
+                }
+                return []
+              }
+            })(),
+            snapshot: (_group, signal) => job(signal).then(() => []),
+          })
+        : ownWindowsTree(child(), (_script, signal) => job(signal))
+    try {
+      await started
+      if (!inspector) throw new Error('Inspector did not spawn')
+      const kill = vi.spyOn(inspector, 'kill')
+      const handler = process
+        .listeners('exit')
+        .find((listener) => !before.has(listener))
+      if (!handler) throw new Error('Missing owned abrupt exit handler')
+      // Invoke only this adapter's exit callback, without exiting the test worker.
+      handler.call(process, 23)
+      expect(kill).toHaveBeenCalledExactlyOnceWith('SIGKILL')
+      await closed
+      if (process.platform !== 'win32')
+        expect(inspector.signalCode).toBe('SIGKILL')
+      await delay(125)
+      expect(jobs).toBe(1)
+    } finally {
+      tree.dispose()
+      inspector?.kill('SIGKILL')
+      await closed
+    }
+  },
+)
