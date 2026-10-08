@@ -475,6 +475,11 @@ async function boundedClose(
 export function processState(pid: number): 'absent' | 'running' | 'zombie' {
   try {
     process.kill(pid, 0)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'absent'
+    throw error
+  }
+  try {
     if (process.platform === 'linux') {
       const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
       return stat.slice(stat.lastIndexOf(') ') + 2).startsWith('Z')
@@ -482,16 +487,39 @@ export function processState(pid: number): 'absent' | 'running' | 'zombie' {
         : 'running'
     }
     if (process.platform === 'darwin') {
-      const stat = execFileSync('ps', ['-p', String(pid), '-o', 'stat='], {
-        timeout: 500,
-        encoding: 'utf8',
-      })
-      return stat.trim().startsWith('Z') ? 'zombie' : 'running'
+      try {
+        const stat = execFileSync('ps', ['-p', String(pid), '-o', 'stat='], {
+          timeout: 500,
+          encoding: 'utf8',
+        })
+        return stat.trim().startsWith('Z') ? 'zombie' : 'running'
+      } catch (error) {
+        const failure = error as {
+          status?: number
+          stdout?: string
+          stderr?: string
+        }
+        if (
+          failure.status === 1 &&
+          failure.stdout === '' &&
+          failure.stderr === ''
+        ) {
+          // ps can lose the process between the existence check and its snapshot.
+          try {
+            process.kill(pid, 0)
+          } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === 'ESRCH')
+              return 'absent'
+            throw cause
+          }
+        }
+        throw error
+      }
     }
     return 'running'
   } catch (error) {
     if (
-      (error as NodeJS.ErrnoException).code === 'ESRCH' ||
+      process.platform === 'linux' &&
       (error as NodeJS.ErrnoException).code === 'ENOENT'
     )
       return 'absent'

@@ -130,6 +130,31 @@ it('reports root exit before an inherited pipe closes', async () => {
     },
     directory,
   )
+  const fallback = async (): Promise<void> => {
+    let confirmed = false
+    try {
+      await writeFile(stopFile, 'stop')
+      const deadline = Date.now() + 2000
+      while (true) {
+        const records = await readJournal(journal)
+        if (
+          records.some((record) => record.role === 'dev-descendant') &&
+          (dev.pid === undefined || processState(dev.pid) !== 'running') &&
+          records.every((record) => processState(record.pid) !== 'running')
+        ) {
+          break
+        }
+        if (Date.now() >= deadline)
+          throw new Error('Root-exit fixture fallback did not stop resources')
+        await delay(25)
+      }
+      await waitForPipeClosure(dev)
+      confirmed = true
+    } finally {
+      dev.dispose()
+      if (confirmed) await rm(directory, { recursive: true, force: true })
+    }
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const deadline = Date.now() + 5000
@@ -167,26 +192,7 @@ it('reports root exit before an inherited pipe closes', async () => {
     expect(await readFile(journal, 'utf8')).toContain('root-exiting')
   } finally {
     clearTimeout(timer)
-    await writeFile(stopFile, 'stop')
-    dev.kill('SIGKILL')
-    await waitForPipeClosure(dev)
-    const records = await readJournal(journal)
-    await delay(50)
-    for (const record of records) {
-      let state = 'terminated'
-      try {
-        process.kill(record.pid, 0)
-        state =
-          process.platform === 'linux'
-            ? ((await readFile(`/proc/${record.pid}/stat`, 'utf8')).split(
-                ') ',
-              )[1]?.[0] ?? 'unknown')
-            : 'present'
-      } catch {}
-      console.info('fallback state', JSON.stringify({ ...record, state }))
-    }
-    dev.dispose()
-    await rm(directory, { recursive: true, force: true })
+    await fallback()
   }
 })
 
