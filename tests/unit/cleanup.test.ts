@@ -20,6 +20,8 @@ function dev(exit: Promise<ProcessExit>): DevProcess {
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     exit,
+    waitForStop: () => exit.then(() => {}),
+    dispose: vi.fn(),
     kill: vi.fn(),
   }
 }
@@ -50,6 +52,23 @@ describe('bounded resource cleanup', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('does not confuse root exit with remaining resource shutdown', async () => {
+    const stopped = deferred<void>()
+    const process = dev(Promise.resolve(exited))
+    process.waitForStop = vi.fn(() => stopped.promise)
+    process.dispose = vi.fn()
+    process.kill = vi.fn((signal) => {
+      if (signal === 'SIGKILL') stopped.resolve()
+    })
+    const result = cleanupDev(process, new AbortController().signal)
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(process.kill).not.toHaveBeenCalledWith('SIGKILL')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(await result).toEqual({})
+    expect(process.kill).toHaveBeenCalledWith('SIGKILL')
+    expect(process.dispose).toHaveBeenCalledOnce()
   })
 
   it('forces a dev process after its graceful deadline', async () => {
@@ -232,6 +251,41 @@ describe('bounded resource cleanup', () => {
       expect((await result).error?.code).toBe('PROCESS_CLEANUP_ERROR')
     },
   )
+
+  it('cancels resource observation and disposes handles after the forced deadline', async () => {
+    const stopped = deferred<void>()
+    const process = dev(Promise.resolve(exited))
+    let observation: AbortSignal | undefined
+    process.waitForStop = (signal) => {
+      observation = signal
+      return stopped.promise
+    }
+    const result = cleanupDev(process, new AbortController().signal)
+    await vi.advanceTimersByTimeAsync(3999)
+    expect(observation?.aborted).toBe(false)
+    expect(process.dispose).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await result).error?.message).toContain(
+      'Dev resource shutdown could not be confirmed',
+    )
+    expect(observation?.aborted).toBe(true)
+    expect(process.dispose).toHaveBeenCalledOnce()
+    stopped.reject(new Error('Late resource observation failure'))
+    await vi.advanceTimersByTimeAsync(0)
+  })
+
+  it('reports synchronous resource observation failure and still disposes', async () => {
+    const process = dev(Promise.resolve(exited))
+    process.waitForStop = () => {
+      throw new Error('Inspection unavailable')
+    }
+    const result = await cleanupDev(process, new AbortController().signal)
+    expect(result.error?.message).toContain(
+      'failed to confirm resource shutdown',
+    )
+    expect(process.kill).toHaveBeenCalledWith('SIGKILL')
+    expect(process.dispose).toHaveBeenCalledOnce()
+  })
 
   it('observes late dev rejection after its exit deadline', async () => {
     const exit = deferred<ProcessExit>()

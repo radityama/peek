@@ -4,15 +4,18 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { expect, it } from 'vitest'
+import { cleanupDev } from '../../src/core/cleanup.js'
 import {
   type DevProcess,
   isMissingWindowsCommand,
   spawnDev,
 } from '../../src/core/process.js'
+import { processState } from '../helpers/cli.js'
 
 interface Record {
   role: string
   pid: number
+  port?: number
 }
 
 const fixture = fileURLToPath(
@@ -63,6 +66,7 @@ it('reports a real unavailable command with missing-command classification', asy
     }
   } finally {
     dev.kill('SIGKILL')
+    dev.dispose()
     await rm(directory, { recursive: true, force: true })
   }
 })
@@ -80,6 +84,7 @@ it('reports normal zero exit as successful', async () => {
     })
   } finally {
     dev.kill('SIGKILL')
+    dev.dispose()
   }
 })
 
@@ -180,6 +185,119 @@ it('reports root exit before an inherited pipe closes', async () => {
       } catch {}
       console.info('fallback state', JSON.stringify({ ...record, state }))
     }
+    dev.dispose()
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+async function controlledTree() {
+  const directory = await mkdtemp(join(tmpdir(), 'peek-controlled-tree-'))
+  const journal = join(directory, 'journal.jsonl')
+  const stopFile = join(directory, 'stop-descendant')
+  const exitFile = join(directory, 'exit-root')
+  await writeFile(journal, '')
+  const dev = spawnDev(
+    {
+      file: process.execPath,
+      args: [
+        '--input-type=module',
+        '-e',
+        `process.env.PEEK_TEST_JOURNAL=${JSON.stringify(journal)}; process.env.PEEK_TEST_STOP_FILE=${JSON.stringify(stopFile)}; process.env.PEEK_TEST_ROOT_EXIT_FILE=${JSON.stringify(exitFile)}; await import(${JSON.stringify(pathToFileURL(fixture).href)})`,
+      ],
+    },
+    directory,
+  )
+  const deadline = Date.now() + 5000
+  while (
+    !(await readJournal(journal)).some(
+      (record) => record.role === 'root-waiting',
+    )
+  ) {
+    if (Date.now() >= deadline)
+      throw new Error('Missing controlled root checkpoint')
+    await delay(25)
+  }
+  const records = await readJournal(journal)
+  const descendant = records.find((record) => record.role === 'dev-descendant')
+  if (!descendant || dev.pid === undefined) {
+    throw new Error('Missing controlled process identities')
+  }
+  return {
+    dev,
+    rootPid: dev.pid,
+    descendant,
+    exitRoot: () => writeFile(exitFile, 'exit'),
+    async fallback() {
+      await writeFile(stopFile, 'stop')
+      await writeFile(exitFile, 'exit')
+      await dev.exit
+      const deadline = Date.now() + 2000
+      while (processState(descendant.pid) === 'running') {
+        if (Date.now() >= deadline)
+          throw new Error('Controlled fixture fallback did not stop descendant')
+        await delay(25)
+      }
+      dev.dispose()
+      await rm(directory, { recursive: true, force: true })
+    },
+  }
+}
+
+it('releases piped handles and prevents repeated termination after disposal', async () => {
+  const fixture = await controlledTree()
+  try {
+    fixture.dev.dispose()
+    fixture.dev.dispose()
+    fixture.dev.kill('SIGTERM')
+    fixture.dev.kill('SIGKILL')
+    await delay(150)
+    expect(fixture.dev.stdout.destroyed).toBe(true)
+    expect(fixture.dev.stderr.destroyed).toBe(true)
+    expect(processState(fixture.rootPid)).toBe('running')
+    expect(processState(fixture.descendant.pid)).toBe('running')
+    expect(
+      await (await fetch(`http://127.0.0.1:${fixture.descendant.port}`)).text(),
+    ).toBe('adversarial descendant')
+  } finally {
+    await fixture.fallback()
+  }
+})
+
+it.runIf(process.platform === 'win32')(
+  'terminates a real intact Windows tree without IPC signal simulation',
+  async () => {
+    const fixture = await controlledTree()
+    try {
+      const result = await cleanupDev(fixture.dev, new AbortController().signal)
+      expect(result).toEqual({})
+      expect(processState(fixture.rootPid)).toBe('absent')
+      expect(processState(fixture.descendant.pid)).toBe('absent')
+      await expect(
+        fetch(`http://127.0.0.1:${fixture.descendant.port}`, {
+          signal: AbortSignal.timeout(1000),
+        }),
+      ).rejects.toThrow()
+    } finally {
+      await fixture.fallback()
+    }
+  },
+)
+
+it.runIf(process.platform === 'win32')(
+  'reports uncertainty when a Windows root exits before identity observation',
+  async () => {
+    const dev = spawnDev(
+      { file: process.execPath, args: ['-e', 'process.exit(7)'] },
+      tmpdir(),
+    )
+    try {
+      await dev.exit
+      if (dev.pid === undefined) throw new Error('Missing Windows root PID')
+      const result = await cleanupDev(dev, new AbortController().signal)
+      expect(result.error?.code).toBe('PROCESS_CLEANUP_ERROR')
+      expect(processState(dev.pid)).toBe('absent')
+    } finally {
+      dev.dispose()
+    }
+  },
+)

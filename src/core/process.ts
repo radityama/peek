@@ -2,6 +2,7 @@ import type { Readable } from 'node:stream'
 import { execa } from 'execa'
 import { whichCommand } from 'which-command'
 import type { DevCommand } from './dev-command.js'
+import { ownPosixTree, ownWindowsTree } from './process-tree.js'
 
 export interface ProcessExit {
   exitCode: number | null
@@ -16,6 +17,8 @@ export interface DevProcess {
   stderr: Readable
   exit: Promise<ProcessExit>
   kill: (signal: NodeJS.Signals) => void
+  waitForStop: (signal: AbortSignal) => Promise<void>
+  dispose: () => void
 }
 
 export function spawnDev(command: DevCommand, cwd: string): DevProcess {
@@ -28,12 +31,17 @@ export function spawnDev(command: DevCommand, cwd: string): DevProcess {
     buffer: false,
     reject: false,
     killDescendants: true,
-    cleanup: true,
+    cleanup: false,
+    forceKillAfterDelay: false,
   })
   if (!child.stdout || !child.stderr) {
     throw new Error('Development server output streams were unavailable')
   }
   const nativeChild = child.nodeChildProcess
+  const tree =
+    process.platform === 'win32'
+      ? ownWindowsTree(nativeChild)
+      : ownPosixTree(nativeChild)
   const exit = new Promise<ProcessExit>((resolve) => {
     const finish = (result: ProcessExit): void => {
       nativeChild.removeListener('exit', onExit)
@@ -92,8 +100,17 @@ export function spawnDev(command: DevCommand, cwd: string): DevProcess {
     stdout: child.stdout,
     stderr: child.stderr,
     exit,
+    waitForStop: (signal) => tree.waitForStop(signal),
+    dispose: () => {
+      const stopped = tree.dispose()
+      child.stdout?.destroy()
+      child.stderr?.destroy()
+      // A failed termination must not leave the native handle holding the CLI
+      // open after its bounded cleanup attempt has already reported failure.
+      if (!stopped) nativeChild.unref()
+    },
     kill: (signal) => {
-      child.kill(signal)
+      tree.kill(signal)
     },
   }
 }

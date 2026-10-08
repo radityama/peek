@@ -279,7 +279,7 @@ descendant cleanup. Commit `fix: observe dev root exit without waiting for pipes
 - Create: `tests/integration/cli-adversarial.test.ts`
 - Modify: `tests/integration/process.test.ts`, `tests/unit/cleanup.test.ts`, `tests/unit/lifecycle.test.ts`
 
-- [ ] **Step 1: Reproduce false cleanup confirmation in one vertical slice**
+- [x] **Step 1: Reproduce false cleanup confirmation in one vertical slice**
 
 Extend the fixture with a descendant HTTP listener, separate or inherited
 stdout/stderr, a POSIX SIGTERM-refusal handler and a control-file command to
@@ -313,7 +313,7 @@ descendant still serves HTTP in RED and is stopped in GREEN, before fallback.
 Then add inherited-pipe, dev-exit-before-READY and dev-exit-during-backoff
 slices. Do not bulk-add every adversarial case before fixing the first one.
 
-- [ ] **Step 2: Run and record each RED**
+- [x] **Step 2: Run and record each RED**
 
 Run `pnpm exec vitest run tests/unit/cleanup.test.ts -t 'remaining resource'`
 and `pnpm exec vitest run tests/integration/cli-adversarial.test.ts` as each
@@ -321,7 +321,7 @@ case is introduced. Expected: the original cleanup incorrectly trusts root
 exit, or the real descendant survives. Capture actual process state and HTTP
 evidence; a fixture or compilation error is not the reproduced process bug.
 
-- [ ] **Step 3: Implement resource observation and consume it in cleanup**
+- [x] **Step 3: Implement resource observation and consume it in cleanup**
 
 Add the required waitForStop/dispose methods. Use this cleanup structure,
 retaining the existing failure aggregation and messages where accurate:
@@ -384,12 +384,33 @@ concrete requirements. Its code is not prescribed before that evidence:
    descendants, late observation rejection, repeated force and disposal.
    Use real OS processes for tree assertions and fake timers for exact waits.
 
+Controller ruling after RED: replace Execa's independent dev cleanup and force
+timer using `cleanup: false` and `forceKillAfterDelay: false` when the owned
+adapter is installed, preserving a verified bounded best-effort abrupt-parent
+fallback without another normal signal owner. Guard group identity before
+signaling; PGID/state numbers alone do not authorize a newly reused group.
+Windows tracking uses PID plus creation identities while ancestry is visible.
+An unobserved root-first identity produces PROCESS_CLEANUP_ERROR, even if known
+resources stopped. Test that conservative uncertainty separately from tracked
+root-first and intact-tree success; retain primary-first/status/JSON policy.
+The bounded Windows job may use creation-matched .NET process handles to
+terminate children first and root last. Taskkill is not mandated; avoid a
+nested orphanable command and an unpinned snapshot-to-PID kill. Retain primary
+evidence for Windows PowerShell/.NET Framework-compatible APIs.
+
+Measured sampling ruling: retain one synchronous root-anchor snapshot, use
+direct Linux /proc group snapshots thereafter, and sample after a 100 ms delay
+during the first second, then 250 ms on both POSIX and Windows. On this Linux
+host, 100 full ps snapshots averaged 11.15 ms versus 3.40 ms for /proc.
+Windows CPU cost is unmeasured. Between-sample loss of every known identity
+must produce unconfirmed cleanup rather than authorize a reused group.
+
 Extend the harness process-state assertion to report absent, running and
 zombie separately. On Linux read `/proc/<pid>/stat`; on macOS use bounded ps;
 on Windows absence and available identity evidence determine the result.
 Do not turn the fallback teardown into the assertion or suppress live orphans.
 
-- [ ] **Step 4: Verify cancellation, precedence and repeated signals**
+- [x] **Step 4: Verify cancellation, precedence and repeated signals**
 
 Run `pnpm exec vitest run tests/integration/process.test.ts tests/integration/cli-adversarial.test.ts tests/integration/cli-process.test.ts tests/integration/cli-reconnect.test.ts tests/unit/cleanup.test.ts tests/unit/lifecycle.test.ts`.
 Expected: all supported cases pass, platform exclusions say why, first signal
