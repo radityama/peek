@@ -356,9 +356,10 @@ async function inspectWindows(
     signal?.throwIfAborted()
     // Descendant inspection below remains available without netstat.
   }
-  if (!directAvailable) return { available: false, ports: [...opened] }
   // netstat already proves the root owns the expected port; the expensive
   // descendant scan is only needed to prove the negative or widen the set.
+  // When netstat is unavailable the scan still runs, so an announced port is
+  // not lost just because the direct reader failed.
   if (expectedPort !== undefined && opened.has(expectedPort))
     return { available: true, ports: [...opened] }
   const script = `$ids = @(${rootPid}); $all = Get-CimInstance Win32_Process; do { $new = @($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId); $next = @($new | Where-Object { $ids -notcontains $_ }); $ids += $next } while ($next.Count -gt 0); Get-NetTCPConnection -State Listen | Where-Object { $ids -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalPort`
