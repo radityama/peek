@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -693,6 +694,96 @@ it('restores owned signal listener counts after repeated runs', async () => {
   expect(process.listenerCount('SIGINT')).toBe(before.sigint)
   expect(process.listenerCount('SIGTERM')).toBe(before.sigterm)
 })
+
+it('fails terminally when the selected listener disappears before a reconnect', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'peek-listener-loss-'))
+  const controlFile = join(directory, 'close-listener')
+  const scriptFile = join(directory, 'dev.mjs')
+  await writeFile(
+    scriptFile,
+    `import { createServer } from 'node:net'
+import { existsSync } from 'node:fs'
+import { setTimeout as delay } from 'node:timers/promises'
+const control = process.argv[2]
+const server = createServer((socket) => socket.end())
+server.listen(0, '127.0.0.1', async () => {
+  console.log('Local: http://localhost:' + server.address().port)
+  while (!existsSync(control)) await delay(20)
+  server.close()
+  setInterval(() => {}, 1000)
+})
+`,
+  )
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const pendingExits: Array<(exit: { exitCode: number }) => void> = []
+  let connects = 0
+  const provider: TunnelProvider = {
+    name: 'controllable',
+    async connect() {
+      connects++
+      const exited = new Promise<{ exitCode: number }>((resolve) => {
+        pendingExits.push(resolve)
+      })
+      return {
+        url: `https://fixture-peek.trycloudflare.com/${connects}`,
+        exited,
+      }
+    },
+    async disconnect() {},
+  }
+  let port = 0
+  let readyCount = 0
+  let resolveReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve
+  })
+  try {
+    const running = runPeek({
+      cwd: directory,
+      command: { file: process.execPath, args: [scriptFile, controlFile] },
+      lifecycle,
+      provider,
+      onServerReady: (value) => {
+        port = value
+      },
+      onReady: () => {
+        readyCount++
+        resolveReady()
+      },
+    })
+    await ready
+    expect(port).toBeGreaterThan(0)
+    await writeFile(controlFile, '')
+    await waitForPortClosed(port)
+    const dropped = pendingExits.shift()
+    expect(dropped).toBeDefined()
+    dropped?.({ exitCode: 1 })
+    await expect(running).rejects.toMatchObject({
+      code: 'SERVER_DETECTION_ERROR',
+    })
+    expect(readyCount).toBe(1)
+    expect(connects).toBe(1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+async function waitForPortClosed(port: number): Promise<void> {
+  for (let attempt = 0; attempt < 150; attempt++) {
+    const closed = await new Promise<boolean>((resolve) => {
+      const socket = createConnection({ port, host: '127.0.0.1' })
+      socket.once('connect', () => {
+        socket.destroy()
+        resolve(false)
+      })
+      socket.once('error', () => resolve(true))
+    })
+    if (closed) return
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error('Listener did not close')
+}
 
 function deferred<T>(): {
   promise: Promise<T>
