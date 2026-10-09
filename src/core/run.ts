@@ -268,7 +268,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       })
       reportAccess()
       signal.throwIfAborted()
-      if (options.framework && !options.password) {
+      if (options.framework) {
         previewController?.abort()
         previewController = new AbortController()
         const previewSignal = AbortSignal.any([
@@ -280,6 +280,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
           connection.url,
           options.framework,
           previewSignal,
+          options.password === undefined
+            ? {}
+            : {
+                authorization: `Basic ${Buffer.from(`peek:${options.password}`).toString('base64')}`,
+              },
         ).then(
           (findings) => {
             if (previewSignal.aborted) return

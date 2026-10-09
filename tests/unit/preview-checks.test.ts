@@ -49,6 +49,55 @@ it('does not claim HMR failed when the public probe cannot connect', async () =>
   expect(findings.map((finding) => finding.kind)).toEqual(['hmr-unverified'])
 })
 
+it('uses credentials only for the public probe and leaves browser HMR unverified', async () => {
+  const authorization = 'Basic fixture-credential'
+  const upgrades: Array<[string, string | undefined]> = []
+  let fetchAuthorization: string | null = null
+  const findings = await checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'vite',
+    new AbortController().signal,
+    {
+      authorization,
+      fetcher: async (_url, init) => {
+        fetchAuthorization = new Headers(init?.headers).get('authorization')
+        return new Response('ok')
+      },
+      probeUpgrade: async (url, _signal, credential) => {
+        upgrades.push([url, credential])
+        return true
+      },
+    },
+  )
+  expect(fetchAuthorization).toBe(authorization)
+  expect(upgrades).toEqual([
+    ['http://localhost:3000', undefined],
+    ['https://fixture.trycloudflare.com', authorization],
+  ])
+  expect(findings.map((finding) => finding.kind)).toEqual(['hmr-unverified'])
+})
+
+it('detects a blocked host through an authenticated public probe', async () => {
+  const findings = await checkPreview(
+    'http://localhost:3000',
+    'https://fixture.trycloudflare.com',
+    'vite',
+    new AbortController().signal,
+    {
+      authorization: 'Basic fixture-credential',
+      fetcher: async () =>
+        new Response('Blocked request. This host is not allowed.', {
+          status: 403,
+        }),
+      probeUpgrade: async () => {
+        throw new Error('A blocked host must stop HMR probes')
+      },
+    },
+  )
+  expect(findings.map((finding) => finding.kind)).toEqual(['blocked-host'])
+})
+
 it('stops preview probes when cancelled during an HTTP retry', async () => {
   const controller = new AbortController()
   let upgradeCalls = 0

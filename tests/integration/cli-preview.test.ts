@@ -195,6 +195,40 @@ it('reports a real forwarded Host rejection without an HMR failure', async () =>
   expect(cli.stderr).toBe('')
 })
 
+it('reports a blocked Host through a protected preview', async () => {
+  const cli = await startCli({
+    args: ['--json', '--password'],
+    env: { PEEK_TEST_PASSWORD: 'preview diagnostic secret' },
+    mode: 'blocked-host',
+    framework: 'vite',
+  })
+  handles.push(cli)
+  await cli.waitForEvent('ready')
+  const warning = await cli.waitForEvent(
+    'warning',
+    (event) => event.kind === 'blocked-host',
+  )
+  expect(warning.message).toContain('--host-header localhost')
+  expect(cli.stdout).not.toContain('preview diagnostic secret')
+  await stop(cli)
+})
+
+it('marks a protected Vite HMR probe as browser-unverified', async () => {
+  const cli = await startCli({
+    args: ['--json', '--password'],
+    env: { PEEK_TEST_PASSWORD: 'hmr diagnostic secret' },
+    framework: 'vite',
+  })
+  handles.push(cli)
+  await cli.waitForEvent('ready')
+  const notice = await cli.waitForEvent('info', (event) =>
+    String(event.message).includes('browser HMR credentials'),
+  )
+  expect(notice.message).toContain('browser HMR credentials')
+  expect(cli.stdout).not.toContain('hmr diagnostic secret')
+  await stop(cli)
+})
+
 it('passes the existing localhost Host override to the real transport', async () => {
   const cli = await startCli({
     args: ['--json', '--host-header', 'localhost'],

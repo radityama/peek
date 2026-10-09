@@ -167,6 +167,10 @@ preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
 receive no status claim.
 
+For a normal protected preview, Peek uses the entered credential only for
+public diagnostic probes through its proxy. A successful authenticated HMR
+probe does not verify browser HMR behavior, so Peek reports it as unverified.
+
 When a framework rejects the random Quick Tunnel hostname, Peek prints a
 specific warning. Retry with `peek --host-header localhost`; this changes the
 Host header received by the dev server and may affect apps that build absolute

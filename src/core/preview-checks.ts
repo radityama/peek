@@ -12,6 +12,7 @@ export interface PreviewFinding {
 export interface PreviewCheckDependencies {
   fetcher?: typeof fetch
   probeUpgrade?: typeof probeWebSocketUpgrade
+  authorization?: string
 }
 
 export function classifyHostRejection(
@@ -45,11 +46,13 @@ export async function checkPreview(
   const findings: PreviewFinding[] = []
   const fetcher = dependencies.fetcher ?? fetch
   const probeUpgrade = dependencies.probeUpgrade ?? probeWebSocketUpgrade
+  const authorization = dependencies.authorization
   for (let attempt = 0; attempt < 3 && !signal.aborted; attempt++) {
     try {
       const response = await fetcher(publicUrl, {
         signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]),
         redirect: 'manual',
+        ...(authorization ? { headers: { authorization } } : {}),
       })
       if (response.status >= 500) {
         await response.body?.cancel().catch(() => {})
@@ -87,7 +90,7 @@ export async function checkPreview(
     })
     return findings
   }
-  const remote = await probeUpgrade(publicUrl, signal)
+  const remote = await probeUpgrade(publicUrl, signal, authorization)
   if (signal.aborted) return findings
   if (remote === false) {
     findings.push({
@@ -99,6 +102,12 @@ export async function checkPreview(
     findings.push({
       kind: 'hmr-unverified',
       message: 'Public HMR upgrade could not be checked yet.',
+    })
+  } else if (authorization) {
+    findings.push({
+      kind: 'hmr-unverified',
+      message:
+        'Authenticated HMR upgrade succeeded, but browser HMR credentials could not be verified.',
     })
   }
   return findings
@@ -124,6 +133,7 @@ async function readPrefix(response: Response, limit: number): Promise<string> {
 export function probeWebSocketUpgrade(
   baseUrl: string,
   signal: AbortSignal,
+  authorization?: string,
 ): Promise<boolean | undefined> {
   return new Promise((resolve) => {
     const url = new URL(baseUrl)
@@ -137,6 +147,7 @@ export function probeWebSocketUpgrade(
           'Sec-WebSocket-Version': '13',
           'Sec-WebSocket-Key': randomBytes(16).toString('base64'),
           'Sec-WebSocket-Protocol': 'vite-hmr',
+          ...(authorization ? { Authorization: authorization } : {}),
         },
       },
     )

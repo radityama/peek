@@ -21,6 +21,7 @@ stdout and stderr are already shown in normal mode.
 | `cloudflared` download fails | Check HTTPS access to GitHub releases, proxy/firewall settings, disk space, and `~/.peek/bin` permissions; retry. Peek does not use an unverified binary. |
 | Cloudflare tunnel fails | Check internet access and `peek --verbose`. A `~/.cloudflared/config.yaml` may prevent Quick Tunnels; move it temporarily if appropriate, then retry. Peek does not edit it. |
 | Dev server rejects the tunnel hostname | Retry with `peek --host-header localhost`. The origin will see `Host: localhost`, so check apps that generate absolute URLs from the Host header. |
+| Protected Vite HMR is unverified | Peek can test an authenticated WebSocket through the tunnel, but that does not prove the browser sends Basic credentials on its HMR socket. Open the preview in a browser and confirm edits update; inspect the browser's Network WebSocket entry if they do not. |
 | Network or firewall blocks the tunnel | Permit the network connections required by `cloudflared`, use a different network, or try `--lan` on the same Wi-Fi. |
 | QR code is missing | Confirm stdout is a TTY and the terminal is wide and tall enough. The public URL is always printed as text. |
 | Windows child remains after exit | Close the process from Task Manager or `taskkill /T /F /PID <pid>`, then report the exact command and Windows version. Execa uses Windows process-tree termination when available. |
