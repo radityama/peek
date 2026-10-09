@@ -518,11 +518,11 @@ export function processState(pid: number): 'absent' | 'running' | 'zombie' {
     }
     return 'running'
   } catch (error) {
-    if (
-      process.platform === 'linux' &&
-      (error as NodeJS.ErrnoException).code === 'ENOENT'
-    )
-      return 'absent'
+    if (process.platform === 'linux') {
+      const code = (error as NodeJS.ErrnoException).code
+      // /proc can drop a reaped process between kill(0) and the stat read.
+      if (code === 'ENOENT' || code === 'ESRCH') return 'absent'
+    }
     throw error
   }
 }
