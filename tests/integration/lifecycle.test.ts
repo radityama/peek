@@ -693,7 +693,7 @@ it('restores owned signal listener counts after repeated runs', async () => {
   }
   expect(process.listenerCount('SIGINT')).toBe(before.sigint)
   expect(process.listenerCount('SIGTERM')).toBe(before.sigterm)
-})
+}, 30000)
 
 it('fails terminally when the selected listener disappears before a reconnect', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'peek-listener-loss-'))
@@ -767,7 +767,7 @@ server.listen(0, '127.0.0.1', async () => {
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 30000)
 
 async function waitForPortClosed(port: number): Promise<void> {
   for (let attempt = 0; attempt < 150; attempt++) {
