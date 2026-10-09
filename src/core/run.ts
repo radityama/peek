@@ -22,6 +22,7 @@ import {
   verifySelectedServer,
   waitForServer,
 } from './server.js'
+import { coordinateVerification } from './verification.js'
 
 export interface RunOptions {
   cwd: string
@@ -182,12 +183,17 @@ export async function runPeek(options: RunOptions): Promise<void> {
     lifecycle.advance('server-ready')
     options.onServerReady?.(port)
     signal.throwIfAborted()
-    // The port is fixed for the preview, so every later connect re-proves that
-    // the same dev process still owns it. Verification failure is terminal and
-    // must not be counted as a recoverable provider failure.
-    const recheckListener = async (): Promise<void> => {
+    // The port stays fixed. Concurrent traffic shares one inspection, and a
+    // successful result is valid for at most one second. Process exit and
+    // shutdown always override cached evidence.
+    const inspectSelectedListener = coordinateVerification(() =>
+      verifySelectedServer(dev.pid, port, signal),
+    )
+    const recheckListener = async (fresh = false): Promise<void> => {
+      signal.throwIfAborted()
+      if (devExited) throw serverExit(devExit ?? (await dev.exit))
       const verified = await waitForOutcome(
-        verifySelectedServer(dev.pid, port, signal),
+        inspectSelectedListener(fresh),
         dev.exit,
         signal,
       )
@@ -196,6 +202,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         return
       }
       if (verified.kind === 'dev') throw serverExit(verified.exit)
+      if (devExited) throw serverExit(devExit ?? (await dev.exit))
     }
     const reportAccess = (): void => {
       if (options.expiresMs !== undefined && expiresAt === undefined) {
@@ -213,7 +220,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         signal,
       )
       signal.throwIfAborted()
-      await recheckListener()
+      await recheckListener(true)
       lifecycle.advance('ready')
       options.onLanReady?.(`http://${address}:${port}`)
       reportAccess()
@@ -227,7 +234,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       return
     }
     if (options.privateMode) {
-      await recheckListener()
+      await recheckListener(true)
       lifecycle.advance('ready')
       options.onPrivateReady?.(`http://localhost:${port}`)
       reportAccess()
@@ -242,7 +249,6 @@ export async function runPeek(options: RunOptions): Promise<void> {
     }
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
-    await recheckListener()
     const proxy = await startPreviewProxy({
       targetPort: port,
       verifyTarget: recheckListener,
@@ -321,7 +327,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         if (disconnected.kind === 'cancel') return
         if (disconnected.kind === 'dev') throw serverExit(disconnected.exit)
         signal.throwIfAborted()
-        await recheckListener()
+        await recheckListener(true)
         try {
           const connected = await waitForOutcome(
             provider.connect({
