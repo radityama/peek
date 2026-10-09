@@ -163,18 +163,64 @@ function ambiguousPorts(ports: readonly number[]): PeekError {
   )
 }
 
+export interface ListenerInspection {
+  available: boolean
+  ports: readonly number[]
+}
+
+export async function inspectChildListeners(
+  pid: number | undefined,
+  signal?: AbortSignal,
+  expectedPort?: number,
+): Promise<ListenerInspection> {
+  if (pid === undefined) return { available: false, ports: [] }
+  signal?.throwIfAborted()
+  try {
+    if (process.platform === 'linux')
+      return { available: true, ports: await inspectLinux(pid) }
+    if (process.platform === 'darwin')
+      return { available: true, ports: await inspectMac(pid, signal) }
+    if (process.platform === 'win32')
+      return await inspectWindows(pid, signal, expectedPort)
+  } catch {
+    // Cancellation must survive the optional-inspection fallback below.
+    signal?.throwIfAborted()
+  }
+  return { available: false, ports: [] }
+}
+
 export async function inspectChildListeningPorts(
   pid: number | undefined,
+  signal?: AbortSignal,
 ): Promise<number[]> {
-  if (pid === undefined) return []
-  try {
-    if (process.platform === 'linux') return await inspectLinux(pid)
-    if (process.platform === 'darwin') return await inspectMac(pid)
-    if (process.platform === 'win32') return await inspectWindows(pid)
-  } catch {
-    // Socket inspection is an optional signal; output and readiness still work.
+  return [...(await inspectChildListeners(pid, signal)).ports]
+}
+
+// Verify that the fixed selected port is still reachable and still belongs to
+// the dev process. An unavailable inspection is not evidence of ownership loss,
+// so only a confirmed empty or mismatched listener set is rejected.
+export async function verifySelectedServer(
+  pid: number | undefined,
+  port: number,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted()
+  if (!(await probePort(port, signal))) {
+    throw new PeekError(
+      'SERVER_DETECTION_ERROR',
+      `The selected dev server on port ${port} is no longer reachable.`,
+      'Restart Peek after the dev server is ready; Peek does not switch ports during a preview.',
+    )
   }
-  return []
+  const inspected = await inspectChildListeners(pid, signal, port)
+  signal.throwIfAborted()
+  if (inspected.available && !inspected.ports.includes(port)) {
+    throw new PeekError(
+      'SERVER_DETECTION_ERROR',
+      `Port ${port} no longer belongs to the selected dev process.`,
+      'Stop the unrelated listener and restart Peek with the dev server port.',
+    )
+  }
 }
 
 async function inspectLinux(rootPid: number): Promise<number[]> {
@@ -238,7 +284,10 @@ async function linuxDescendants(rootPid: number): Promise<number[]> {
   return result
 }
 
-async function inspectMac(rootPid: number): Promise<number[]> {
+async function inspectMac(
+  rootPid: number,
+  signal?: AbortSignal,
+): Promise<number[]> {
   const pids = [rootPid]
   for (let index = 0; index < pids.length; index++) {
     const pid = pids[index]
@@ -246,6 +295,7 @@ async function inspectMac(rootPid: number): Promise<number[]> {
     try {
       const { stdout } = await execFileAsync('pgrep', ['-P', String(pid)], {
         timeout: 500,
+        signal,
       })
       for (const value of stdout.trim().split(/\s+/)) {
         const child = Number(value)
@@ -253,51 +303,93 @@ async function inspectMac(rootPid: number): Promise<number[]> {
           pids.push(child)
       }
     } catch {
+      signal?.throwIfAborted()
       // pgrep exits with code 1 when there are no children.
     }
   }
-  const { stdout } = await execFileAsync(
-    'lsof',
-    ['-nP', '-a', '-p', pids.join(','), '-iTCP', '-sTCP:LISTEN'],
-    { timeout: 1000 },
-  )
+  const { stdout } = await lsofListening(pids, signal)
   return parsePortLines(stdout)
 }
 
-async function inspectWindows(rootPid: number): Promise<number[]> {
-  const directPorts = new Set<number>()
+// lsof exits 1 when the filter matches no descriptor. That is a confirmed
+// empty listener set, not an unavailable inspection.
+async function lsofListening(
+  pids: number[],
+  signal?: AbortSignal,
+): Promise<{ stdout: string }> {
+  try {
+    return await execFileAsync(
+      'lsof',
+      ['-nP', '-a', '-p', pids.join(','), '-iTCP', '-sTCP:LISTEN'],
+      { timeout: 1000, signal },
+    )
+  } catch (error) {
+    signal?.throwIfAborted()
+    const code = (error as { code?: number | string }).code
+    if (code === 1 || code === '1') return { stdout: '' }
+    throw error
+  }
+}
+
+// The Windows readers enumerate the whole CIM process table and TCP table,
+// which costs ~1s idle and more under the parallel CI load. Match
+// process-tree's inspection bound so a slow reader is not misread as absent.
+const windowsListenerInspectionTimeout = 10_000
+
+async function inspectWindows(
+  rootPid: number,
+  signal?: AbortSignal,
+  expectedPort?: number,
+): Promise<ListenerInspection> {
+  const opened = new Set<number>()
+  let directAvailable = false
   try {
     const { stdout: netstat } = await execFileAsync(
       'netstat',
       ['-ano', '-p', 'tcp'],
-      { timeout: 2000 },
+      { timeout: windowsListenerInspectionTimeout, signal },
     )
+    directAvailable = true
     for (const line of netstat.split('\n')) {
       const match = /^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/i.exec(
         line,
       )
       if (match?.[1] && Number(match[2]) === rootPid)
-        directPorts.add(Number(match[1]))
+        opened.add(Number(match[1]))
     }
   } catch {
+    signal?.throwIfAborted()
     // Descendant inspection below remains available without netstat.
   }
+  // netstat already proves the root owns the expected port; the expensive
+  // descendant scan is only needed to prove the negative or widen the set.
+  // When netstat is unavailable the scan still runs, so an announced port is
+  // not lost just because the direct reader failed.
+  if (expectedPort !== undefined && opened.has(expectedPort))
+    return { available: true, ports: [...opened] }
   const script = `$ids = @(${rootPid}); $all = Get-CimInstance Win32_Process; do { $new = @($all | Where-Object { $ids -contains $_.ParentProcessId } | ForEach-Object ProcessId); $next = @($new | Where-Object { $ids -notcontains $_ }); $ids += $next } while ($next.Count -gt 0); Get-NetTCPConnection -State Listen | Where-Object { $ids -contains $_.OwningProcess } | Select-Object -ExpandProperty LocalPort`
+  let descendantsAvailable = false
   try {
     const { stdout } = await execFileAsync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { timeout: 2000 },
+      { timeout: windowsListenerInspectionTimeout, signal },
     )
+    descendantsAvailable = true
     for (const value of stdout.trim().split(/\s+/)) {
       const port = Number(value)
-      if (Number.isInteger(port) && port > 0 && port <= 65535)
-        directPorts.add(port)
+      if (Number.isInteger(port) && port > 0 && port <= 65535) opened.add(port)
     }
   } catch {
-    // Keep direct evidence when descendant inspection is unavailable.
+    signal?.throwIfAborted()
+    // Keep the direct root evidence when descendant inspection is unavailable.
   }
-  return [...directPorts]
+  // Direct netstat only proves the root listener; a confirmed empty set needs
+  // both readers. Verify therefore accepts an unavailable descendant read.
+  return {
+    available: directAvailable && descendantsAvailable,
+    ports: [...opened],
+  }
 }
 
 function parsePortLines(stdout: string): number[] {

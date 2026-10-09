@@ -17,6 +17,7 @@ import {
   captureBaselinePorts,
   inspectChildListeningPorts,
   PortSignals,
+  verifySelectedServer,
   waitForServer,
 } from './server.js'
 
@@ -85,6 +86,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
   const { cwd, command, explicitPort, lifecycle, provider } = options
   const signal = lifecycle.signal
   let previewController: AbortController | undefined
+  let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
   try {
     if (provider) await lifecycle.setProvider(provider)
@@ -98,16 +100,22 @@ export async function runPeek(options: RunOptions): Promise<void> {
     await lifecycle.setDev(dev)
     signal.throwIfAborted()
     const signals = new PortSignals()
-    dev.stdout.on('data', (chunk: Buffer | string) => {
+    const onStdout = (chunk: Buffer | string): void => {
       const text = chunk.toString()
       signals.addChunk(text)
       options.onDevOutput?.('stdout', text)
-    })
-    dev.stderr.on('data', (chunk: Buffer | string) => {
+    }
+    const onStderr = (chunk: Buffer | string): void => {
       const text = chunk.toString()
       signals.addChunk(text)
       options.onDevOutput?.('stderr', text)
-    })
+    }
+    dev.stdout.on('data', onStdout)
+    dev.stderr.on('data', onStderr)
+    disposeDevOutput = () => {
+      dev.stdout.removeListener('data', onStdout)
+      dev.stderr.removeListener('data', onStderr)
+    }
     let devExited = false
     let devExit: ProcessExit | undefined
     void dev.exit.then((exit) => {
@@ -162,12 +170,28 @@ export async function runPeek(options: RunOptions): Promise<void> {
     lifecycle.advance('server-ready')
     options.onServerReady?.(port)
     signal.throwIfAborted()
+    // The port is fixed for the preview, so every later connect re-proves that
+    // the same dev process still owns it. Verification failure is terminal and
+    // must not be counted as a recoverable provider failure.
+    const recheckListener = async (): Promise<void> => {
+      const verified = await waitForOutcome(
+        verifySelectedServer(dev.pid, port, signal),
+        dev.exit,
+        signal,
+      )
+      if (verified.kind === 'cancel') {
+        signal.throwIfAborted()
+        return
+      }
+      if (verified.kind === 'dev') throw serverExit(verified.exit)
+    }
     if (options.lan) {
       const address = await (options.lanAddressSelector ?? selectLanAddress)(
         port,
         signal,
       )
       signal.throwIfAborted()
+      await recheckListener()
       lifecycle.advance('ready')
       options.onLanReady?.(`http://${address}:${port}`)
       signal.throwIfAborted()
@@ -248,6 +272,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         if (disconnected.kind === 'cancel') return
         if (disconnected.kind === 'dev') throw serverExit(disconnected.exit)
         signal.throwIfAborted()
+        await recheckListener()
         try {
           const connected = await waitForOutcome(
             provider.connect({
@@ -279,6 +304,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           recovery.failed(error)
         }
       }
+      await recheckListener()
       reportReady(connection)
       const outcome = await waitForOutcome(connection.exited, dev.exit, signal)
       if (outcome.kind === 'cancel') return
@@ -310,6 +336,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    disposeDevOutput?.()
     previewController?.abort()
     const cleanup = await lifecycle.stop(
       primary ? { kind: 'failed', error: primary.error } : undefined,

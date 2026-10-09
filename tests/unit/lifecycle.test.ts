@@ -23,6 +23,8 @@ function dev(): DevProcess {
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     exit: Promise.resolve({ exitCode: 0, failed: false, spawnFailed: false }),
+    waitForStop: vi.fn(async () => {}),
+    dispose: vi.fn(),
     kill: vi.fn(),
   }
 }
@@ -417,7 +419,7 @@ describe('Lifecycle', () => {
       const lifecycle = new Lifecycle()
       const failure = new Error('Original preview failure')
       const process = dev()
-      process.exit = new Promise(() => {})
+      process.waitForStop = () => new Promise(() => {})
       await lifecycle.setDev(process)
       await lifecycle.setProvider(provider(() => new Promise(() => {})))
       const stopped = lifecycle.stop({ kind: 'failed', error: failure })
@@ -425,7 +427,7 @@ describe('Lifecycle', () => {
       const result = await stopped
       expect(result.error?.code).toBe('PROCESS_CLEANUP_ERROR')
       expect(result.error?.message).toMatch(/Tunnel shutdown/)
-      expect(result.error?.message).toMatch(/Dev server exit/)
+      expect(result.error?.message).toMatch(/Dev resource shutdown/)
       expect(result.error?.cause).toBeInstanceOf(AggregateError)
       expect(lifecycle.outcome).toEqual({ kind: 'failed', error: failure })
       expect(lifecycle.phase).toBe('stopped')
@@ -441,11 +443,15 @@ describe('Lifecycle', () => {
       const lifecycle = new Lifecycle()
       const process = dev()
       process.exit = Promise.reject(new Error('Exit unavailable'))
+      process.waitForStop = () =>
+        Promise.reject(new Error('Resource observation unavailable'))
       await lifecycle.setDev(process)
       await lifecycle.setProvider(provider(() => new Promise(() => {})))
       const stopped = lifecycle.stop()
       await vi.advanceTimersByTimeAsync(6000)
-      expect((await stopped).error?.message).toMatch(/observe process exit/)
+      expect((await stopped).error?.message).toMatch(
+        /confirm resource shutdown/,
+      )
       expect(lifecycle.phase).toBe('stopped')
       expect(vi.getTimerCount()).toBe(0)
     } finally {

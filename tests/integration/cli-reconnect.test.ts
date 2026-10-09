@@ -1,6 +1,9 @@
 import { afterEach, expect, it } from 'vitest'
 import { type CliHandle, startCli } from '../helpers/cli.js'
-import { readJsonEvents } from '../helpers/json-contract.js'
+import {
+  isDevCleanupUncertainty,
+  readJsonEvents,
+} from '../helpers/json-contract.js'
 
 const handles: CliHandle[] = []
 afterEach(async () => {
@@ -159,11 +162,14 @@ it('dev exit during backoff stops recovery without another transport', async () 
   process.kill(dev.pid, 'SIGTERM')
   expect(await cli.waitForExit()).toEqual({ code: 1, signal: null })
   expect(await attempts(cli)).toEqual([1])
-  expect(cli.events.filter((e) => e.type === 'error')).toEqual([
+  const errors = cli.events.filter((e) => e.type === 'error')
+  const primary = errors.filter((event) => !isDevCleanupUncertainty(event))
+  expect(primary).toEqual([
     expect.objectContaining({
       message: expect.stringContaining('Development server exited with code'),
     }),
   ])
+  expect(errors.length).toBeLessThanOrEqual(2)
   jsonOnly(cli)
   await cli.assertResourcesStopped()
 })

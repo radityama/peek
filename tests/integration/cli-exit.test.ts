@@ -2,7 +2,10 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import packageJson from '../../package.json' with { type: 'json' }
 import { type CliHandle, startCli } from '../helpers/cli.js'
-import { readJsonEvents } from '../helpers/json-contract.js'
+import {
+  isDevCleanupUncertainty,
+  readJsonEvents,
+} from '../helpers/json-contract.js'
 
 const handles: CliHandle[] = []
 afterEach(async () => {
@@ -227,8 +230,10 @@ it('keeps unavailable command failure at status 1 and cleans partial startup', a
   const errors = readJsonEvents(cli.stdout).filter(
     (event) => event.type === 'error',
   )
-  expect(errors).toHaveLength(1)
-  expect(errors[0]?.message).toContain('peek-fixture-no-such-command')
+  const primary = errors.filter((event) => !isDevCleanupUncertainty(event))
+  expect(primary).toHaveLength(1)
+  expect(primary[0]?.message).toContain('peek-fixture-no-such-command')
+  expect(errors.length).toBeLessThanOrEqual(2)
   expect(cli.stderr).toBe('')
   await cli.assertResourcesStopped()
 })
@@ -244,8 +249,10 @@ it('keeps a real dev crash at status 1 and cleans the prepared provider', async 
   const errors = readJsonEvents(cli.stdout).filter(
     (event) => event.type === 'error',
   )
-  expect(errors).toHaveLength(1)
-  expect(errors[0]?.message).toContain('7')
+  const primary = errors.filter((event) => !isDevCleanupUncertainty(event))
+  expect(primary).toHaveLength(1)
+  expect(primary[0]?.message).toContain('7')
+  expect(errors.length).toBeLessThanOrEqual(2)
   expect(cli.stderr).toBe('')
   await cli.assertResourcesStopped()
 })

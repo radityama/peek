@@ -1,5 +1,5 @@
-import { type ChildProcess, spawn } from 'node:child_process'
-import { appendFileSync } from 'node:fs'
+import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -24,6 +24,7 @@ export interface JournalRecord {
 }
 
 export interface CliOptions {
+  fixture?: 'ordinary' | 'adversarial'
   entry?: 'injected' | 'shipped'
   outputMode?: 'json' | 'human'
   packageJson?: string
@@ -68,6 +69,8 @@ export interface CliHandle {
     predicate?: (event: CliEvent) => boolean,
   ): Promise<CliEvent>
   waitForExit(): Promise<CliExit>
+  exitDevRoot(): Promise<void>
+  exitAbruptly(): Promise<void>
   signal(name: 'SIGINT' | 'SIGTERM'): Promise<void>
   readJournal(): Promise<JournalRecord[]>
   waitForJournal(
@@ -78,7 +81,7 @@ export interface CliHandle {
   dispose(): Promise<void>
 }
 
-const fixture = fileURLToPath(
+const ordinaryFixture = fileURLToPath(
   new URL('../fixtures/cli/server.mjs', import.meta.url),
 )
 const transport = fileURLToPath(
@@ -89,6 +92,12 @@ const shippedEntry = fileURLToPath(
 )
 
 export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
+  const fixture =
+    options.fixture === 'adversarial'
+      ? fileURLToPath(
+          new URL('../fixtures/cli/adversarial.mjs', import.meta.url),
+        )
+      : ordinaryFixture
   const directory = await mkdtemp(join(tmpdir(), 'peek cli-'))
   const journal = join(directory, 'journal.jsonl')
   let allocatedChild: ChildProcess | undefined
@@ -129,6 +138,8 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
         CI: '1',
         NODE_ENV: 'test',
         PEEK_TEST_JOURNAL: journal,
+        PEEK_TEST_STOP_FILE: join(directory, 'stop-descendant'),
+        PEEK_TEST_ROOT_EXIT_FILE: join(directory, 'exit-root'),
         PEEK_TEST_MODE: options.mode ?? 'announced',
         PEEK_TEST_PORT: String(options.port ?? 0),
         PEEK_TEST_BIND: options.bind ?? '127.0.0.1',
@@ -307,6 +318,13 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
           options.timeoutMs ?? 10_000,
         ),
       signal,
+      exitDevRoot: () => writeFile(join(directory, 'exit-root'), 'exit'),
+      exitAbruptly: () =>
+        new Promise<void>((resolve, reject) => {
+          child.send({ type: 'abrupt-exit' }, (error) =>
+            error ? reject(error) : resolve(),
+          )
+        }),
       readJournal,
       waitForJournal: async (role, predicate = () => true) => {
         const deadline = Date.now() + (options.timeoutMs ?? 12_000)
@@ -330,6 +348,12 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
       },
       assertResourcesStopped: async () => {
         const { pids, ports } = await resources()
+        console.info(
+          'resource states before fallback',
+          JSON.stringify(
+            pids.map((pid) => ({ pid, state: processState(pid) })),
+          ),
+        )
         await wait(
           `journalled processes to stop (${pids.join(', ')})`,
           () => (pids.every((pid) => !isAlive(pid)) ? true : undefined),
@@ -352,6 +376,10 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
         if (disposed) return
         disposed = true
         try {
+          if (options.fixture === 'adversarial') {
+            await writeFile(join(directory, 'stop-descendant'), 'stop')
+            await writeFile(join(directory, 'exit-root'), 'exit')
+          }
           await signal('SIGTERM').catch(() => {})
           await wait(
             'graceful fallback close',
@@ -361,7 +389,9 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
           ).catch(() => {})
           // This runs after test assertions; forced cleanup must never prove Peek's cleanup worked.
           const { pids } = await resources()
-          for (const pid of pids.reverse()) {
+          for (const pid of options.fixture === 'adversarial'
+            ? []
+            : pids.reverse()) {
             if (isAlive(pid)) {
               try {
                 process.kill(pid, 'SIGKILL')
@@ -393,6 +423,10 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
     }
   } catch (error) {
     try {
+      if (options.fixture === 'adversarial') {
+        await writeFile(join(directory, 'stop-descendant'), 'stop')
+        await writeFile(join(directory, 'exit-root'), 'exit')
+      }
       allocatedChild?.kill('SIGTERM')
       if (childClosed) await boundedClose(childClosed, 2000)
       const contents = await readFile(journal, 'utf8').catch(() => '')
@@ -407,7 +441,9 @@ export async function startCli(options: CliOptions = {}): Promise<CliHandle> {
           ),
         ),
       ]
-      for (const pid of pids.reverse()) {
+      for (const pid of options.fixture === 'adversarial'
+        ? []
+        : pids.reverse()) {
         try {
           process.kill(pid, 'SIGKILL')
         } catch {}
@@ -436,14 +472,63 @@ async function boundedClose(
   clearTimeout(timer)
 }
 
-function isAlive(pid: number): boolean {
+export function processState(pid: number): 'absent' | 'running' | 'zombie' {
   try {
     process.kill(pid, 0)
-    return true
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return 'absent'
     throw error
   }
+  try {
+    if (process.platform === 'linux') {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+      return stat.slice(stat.lastIndexOf(') ') + 2).startsWith('Z')
+        ? 'zombie'
+        : 'running'
+    }
+    if (process.platform === 'darwin') {
+      try {
+        const stat = execFileSync('ps', ['-p', String(pid), '-o', 'stat='], {
+          timeout: 500,
+          encoding: 'utf8',
+        })
+        return stat.trim().startsWith('Z') ? 'zombie' : 'running'
+      } catch (error) {
+        const failure = error as {
+          status?: number
+          stdout?: string
+          stderr?: string
+        }
+        if (
+          failure.status === 1 &&
+          failure.stdout === '' &&
+          failure.stderr === ''
+        ) {
+          // ps can lose the process between the existence check and its snapshot.
+          try {
+            process.kill(pid, 0)
+          } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === 'ESRCH')
+              return 'absent'
+            throw cause
+          }
+        }
+        throw error
+      }
+    }
+    return 'running'
+  } catch (error) {
+    if (process.platform === 'linux') {
+      const code = (error as NodeJS.ErrnoException).code
+      // /proc can drop a reaped process between kill(0) and the stat read.
+      if (code === 'ENOENT' || code === 'ESRCH') return 'absent'
+    }
+    throw error
+  }
+}
+
+function isAlive(pid: number): boolean {
+  return processState(pid) === 'running'
 }
 
 function portOpen(port: number): Promise<boolean> {

@@ -8,6 +8,14 @@ const onMessage = (message: unknown): void => {
     message &&
     typeof message === 'object' &&
     'type' in message &&
+    message.type === 'abrupt-exit'
+  ) {
+    process.exit(23)
+  }
+  if (
+    message &&
+    typeof message === 'object' &&
+    'type' in message &&
     message.type === 'signal-handler' &&
     'signal' in message &&
     (message.signal === 'SIGINT' || message.signal === 'SIGTERM')

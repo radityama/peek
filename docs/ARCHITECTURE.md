@@ -134,6 +134,16 @@ allows 45 seconds per attempt. Cancellation or dev exit ends recovery
 immediately, including during a pending delay. Reconnect keeps the same dev
 process and selected target; it does not rediscover another port.
 
+Before the initial connect, before a reconnecting connect, before readiness is
+reported, and before LAN readiness, `runPeek` re-verifies the fixed selected
+port. `verifySelectedServer` requires the port to accept a loopback TCP
+connection and, when process inspection is available, to remain in the tracked
+tree's listener set; an unavailable inspection is not treated as ownership
+loss, so only a confirmed empty or mismatched set fails. Failure is terminal
+`SERVER_DETECTION_ERROR`, and Peek does not switch ports during a preview. This
+is not a proxy: a request that arrives after a check still reaches whatever
+owns the port at that moment.
+
 Shutdown outcome is separate from progress: `completed`, `requested`, or
 `failed` with its primary error. The first SIGINT or SIGTERM status is retained
 as 130 or 143 even if another signal follows. `stopped` records completion of
@@ -159,7 +169,7 @@ Cleanup runs provider first, then the dev process tree:
 | Resource | Graceful waiting budget | Escalation | Forced waiting budget |
 | --- | --- | --- | --- |
 | Provider | 5 seconds for `disconnect()` | Invoke optional `forceDisconnect()` | 1 second for the same shutdown promise |
-| Dev process tree | 3 seconds after SIGTERM | Send SIGKILL | 1 second for exit observation |
+| Dev process tree | 3 seconds to confirm resource shutdown after SIGTERM | Send SIGKILL | 1 second to confirm resource shutdown |
 
 The provider budget contains Cloudflare's existing 3-second graceful and
 1-second forced waits. A further termination request forces both resources
@@ -169,6 +179,16 @@ removed after their waits. The nominal total waiting budget is 10 seconds.
 These budgets bound observation; they cannot make a broken provider or the
 operating system confirm termination. Missing force support and unconfirmed
 shutdown produce cleanup diagnostics.
+
+Root exit and resource shutdown are distinct. `DevProcess.exit` settles when
+the direct dev root exits or its spawn fails; inherited pipes or descendants
+can outlive it, so it is not proof that servers have stopped. Cleanup confirms
+shutdown through `waitForStop(signal)`, which fulfils only after the tracked
+process tree, including identified descendants, has stopped, and rejects when
+observation itself fails. The signal cancels inspection, not the dev command;
+Lifecycle still requests termination through `kill`. `dispose()` is idempotent
+and releases the adapter's observation and stream handles after the attempt;
+it is not evidence of OS termination and does not make `waitForStop` resolve.
 
 The CLI uses its existing renderer for both the primary startup/dev error and
 a distinct cleanup error, in that order. Cleanup alone is rendered once.

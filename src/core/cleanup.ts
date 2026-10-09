@@ -97,32 +97,43 @@ export async function cleanupDev(
 ): Promise<CleanupResult> {
   const messages: string[] = []
   const causes: unknown[] = []
-  // Observe exit before kill hooks can synchronously reject it.
-  const gracefulWait = boundedWait(dev.exit, 3_000, force)
+  const observation = new AbortController()
+  let stopped: Promise<void>
   try {
-    dev.kill('SIGTERM')
+    stopped = dev.waitForStop(observation.signal)
   } catch (error) {
-    messages.push('The dev server graceful termination request failed.')
-    causes.push(error)
-  }
-  const graceful = await gracefulWait
-  if (graceful.kind === 'fulfilled') return failure(messages, causes)
-  if (graceful.kind === 'rejected') {
-    messages.push('Dev server cleanup failed to observe process exit.')
-    causes.push(graceful.error)
+    stopped = Promise.reject(error)
   }
   try {
-    dev.kill('SIGKILL')
-  } catch (error) {
-    messages.push('The dev server force termination request failed.')
-    causes.push(error)
+    const gracefulWait = boundedWait(stopped, 3_000, force)
+    try {
+      dev.kill('SIGTERM')
+    } catch (error) {
+      messages.push('The dev server graceful termination request failed.')
+      causes.push(error)
+    }
+    const graceful = await gracefulWait
+    if (graceful.kind === 'fulfilled') return failure(messages, causes)
+    if (graceful.kind === 'rejected') {
+      messages.push('Dev server cleanup failed to confirm resource shutdown.')
+      causes.push(graceful.error)
+    }
+    try {
+      dev.kill('SIGKILL')
+    } catch (error) {
+      messages.push('The dev server force termination request failed.')
+      causes.push(error)
+    }
+    const forced = await boundedWait(stopped, 1_000)
+    if (forced.kind !== 'fulfilled' && graceful.kind !== 'rejected') {
+      messages.push(
+        'Dev resource shutdown could not be confirmed within its cleanup deadline.',
+      )
+      if (forced.kind === 'rejected') causes.push(forced.error)
+    }
+    return failure(messages, causes)
+  } finally {
+    observation.abort()
+    dev.dispose()
   }
-  const forced = await boundedWait(dev.exit, 1_000)
-  if (forced.kind !== 'fulfilled' && graceful.kind !== 'rejected') {
-    messages.push(
-      'Dev server exit could not be confirmed within its cleanup deadline.',
-    )
-    if (forced.kind === 'rejected') causes.push(forced.error)
-  }
-  return failure(messages, causes)
 }
