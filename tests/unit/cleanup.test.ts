@@ -307,4 +307,37 @@ describe('bounded resource cleanup', () => {
     disconnected.reject(new Error('Late disconnect failure'))
     await vi.advanceTimersByTimeAsync(0)
   })
+
+  it('reports the underlying termination failure once instead of masking it', async () => {
+    const cause = new Error('Windows root exited before ancestry was observed')
+    const process = dev(Promise.resolve(exited))
+    process.kill = vi.fn(() => {
+      throw cause
+    })
+    process.waitForStop = () => Promise.reject(cause)
+    const result = await cleanupDev(process, new AbortController().signal)
+    expect(result.error?.code).toBe('PROCESS_CLEANUP_ERROR')
+    expect(result.error?.message.split('\n')).toEqual([
+      'The dev server graceful termination request failed.',
+      'Dev server cleanup failed to confirm resource shutdown.',
+      'The dev server force termination request failed.',
+      `Cleanup cause: ${cause.message}`,
+    ])
+  })
+
+  it('bounds an inspection payload embedded in the cleanup cause', async () => {
+    const cause = new Error(
+      `Command failed: powershell.exe -EncodedCommand ${'A'.repeat(2000)}\nDev process inspection returned invalid creation identity evidence.`,
+    )
+    const process = dev(Promise.resolve(exited))
+    process.kill = vi.fn(() => {
+      throw cause
+    })
+    process.waitForStop = () => Promise.reject(cause)
+    const result = await cleanupDev(process, new AbortController().signal)
+    expect(result.error?.message).toContain(
+      'Cleanup cause: Dev process inspection returned invalid creation identity evidence.',
+    )
+    expect(result.error?.message).not.toContain('A'.repeat(500))
+  })
 })

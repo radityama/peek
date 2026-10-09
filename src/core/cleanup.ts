@@ -36,15 +36,42 @@ async function boundedWait(
   }
 }
 
+const diagnosticLimit = 400
+
+// execFile embeds its full argv in the error message, and a process-inspection
+// job can carry a large encoded payload. Keep the stderr detail that follows
+// the command line and bound whatever is reported.
+function diagnostic(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error)
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  const detail =
+    lines[0]?.startsWith('Command failed:') === true
+      ? lines.slice(1).join(' ')
+      : lines.join(' ')
+  const bounded = detail.length > 0 ? detail : (lines[0] ?? '')
+  return bounded.length > diagnosticLimit
+    ? `${bounded.slice(0, diagnosticLimit)}...`
+    : bounded
+}
+
 function failure(
   messages: readonly string[],
   causes: readonly unknown[],
 ): CleanupResult {
   if (messages.length === 0) return {}
+  const details = [
+    ...new Set(causes.map(diagnostic).filter((detail) => detail.length > 0)),
+  ]
   return {
     error: new PeekError(
       'PROCESS_CLEANUP_ERROR',
-      messages.join('\n'),
+      [
+        ...messages,
+        ...details.map((detail) => `Cleanup cause: ${detail}`),
+      ].join('\n'),
       'Check for remaining dev or tunnel processes before starting Peek again.',
       new AggregateError(causes, 'Resource cleanup failed'),
     ),
