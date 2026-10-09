@@ -273,7 +273,9 @@ interface WindowsMember {
   born: string
 }
 
-const windowsSnapshot = `ConvertTo-Json -Compress -InputObject @(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
+// Internal source export: termination embeds it and the native timing probe
+// measures the production command rather than a duplicated copy.
+export const windowsSnapshot = `ConvertTo-Json -Compress -InputObject @(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
   if ($null -ne $_.CreationDate) {
     @{pid=[int]$_.ProcessId;parent=[int]$_.ParentProcessId;born=$_.CreationDate.ToUniversalTime().Ticks.ToString()}
   }
