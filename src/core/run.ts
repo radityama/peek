@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { TunnelProvider } from '../tunnel/types.js'
 import { PeekError } from '../utils/errors.js'
+import type { AccessMode } from './access.js'
 import type { DevCommand } from './dev-command.js'
 import type { Framework } from './framework.js'
 import { selectLanAddress } from './lan.js'
@@ -12,6 +13,7 @@ import {
   type ProcessExit,
   spawnDev,
 } from './process.js'
+import { startPreviewProxy } from './proxy.js'
 import { TunnelRecovery } from './reconnect.js'
 import {
   captureBaselinePorts,
@@ -28,6 +30,11 @@ export interface RunOptions {
   lifecycle: Lifecycle
   provider?: TunnelProvider
   lan?: boolean
+  privateMode?: boolean
+  accessMode?: AccessMode
+  password?: string
+  expiresMs?: number
+  originHostHeader?: 'localhost'
   lanAddressSelector?: (port: number, signal: AbortSignal) => Promise<string>
   onState?: (
     state: 'starting' | 'waiting' | 'connecting' | 'reconnecting',
@@ -36,6 +43,9 @@ export interface RunOptions {
   onServerReady?: (port: number) => void
   onReady?: (urls: { localUrl: string; publicUrl: string }) => void
   onLanReady?: (url: string) => void
+  onPrivateReady?: (url: string) => void
+  onAccess?: (mode: AccessMode, expiresAt?: string) => void
+  onExpired?: () => void
   framework?: Framework
   onPreviewFinding?: (finding: PreviewFinding) => void
   onPreviewCheckComplete?: () => void
@@ -86,6 +96,8 @@ export async function runPeek(options: RunOptions): Promise<void> {
   const { cwd, command, explicitPort, lifecycle, provider } = options
   const signal = lifecycle.signal
   let previewController: AbortController | undefined
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let expiresAt: string | undefined
   let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
   try {
@@ -185,6 +197,16 @@ export async function runPeek(options: RunOptions): Promise<void> {
       }
       if (verified.kind === 'dev') throw serverExit(verified.exit)
     }
+    const reportAccess = (): void => {
+      if (options.expiresMs !== undefined && expiresAt === undefined) {
+        expiresAt = new Date(Date.now() + options.expiresMs).toISOString()
+        expiryTimer = setTimeout(() => {
+          options.onExpired?.()
+          lifecycle.requestStop()
+        }, options.expiresMs)
+      }
+      options.onAccess?.(options.accessMode ?? 'public', expiresAt)
+    }
     if (options.lan) {
       const address = await (options.lanAddressSelector ?? selectLanAddress)(
         port,
@@ -194,6 +216,21 @@ export async function runPeek(options: RunOptions): Promise<void> {
       await recheckListener()
       lifecycle.advance('ready')
       options.onLanReady?.(`http://${address}:${port}`)
+      reportAccess()
+      signal.throwIfAborted()
+      const outcome = await waitForOutcome(
+        new Promise<never>(() => {}),
+        dev.exit,
+        signal,
+      )
+      if (outcome.kind === 'dev') throw serverExit(outcome.exit)
+      return
+    }
+    if (options.privateMode) {
+      await recheckListener()
+      lifecycle.advance('ready')
+      options.onPrivateReady?.(`http://localhost:${port}`)
+      reportAccess()
       signal.throwIfAborted()
       const outcome = await waitForOutcome(
         new Promise<never>(() => {}),
@@ -205,6 +242,17 @@ export async function runPeek(options: RunOptions): Promise<void> {
     }
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
+    await recheckListener()
+    const proxy = await startPreviewProxy({
+      targetPort: port,
+      verifyTarget: recheckListener,
+      ...(options.password === undefined ? {} : { password: options.password }),
+      ...(options.originHostHeader === undefined
+        ? {}
+        : { originHostHeader: options.originHostHeader }),
+    })
+    await lifecycle.setProxy(proxy)
+    signal.throwIfAborted()
     lifecycle.advance('tunnel-connecting')
     options.onState?.('connecting')
     signal.throwIfAborted()
@@ -216,8 +264,9 @@ export async function runPeek(options: RunOptions): Promise<void> {
         localUrl,
         publicUrl: connection.url,
       })
+      reportAccess()
       signal.throwIfAborted()
-      if (options.framework) {
+      if (options.framework && !options.password) {
         previewController?.abort()
         previewController = new AbortController()
         const previewSignal = AbortSignal.any([
@@ -276,7 +325,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         try {
           const connected = await waitForOutcome(
             provider.connect({
-              target: new URL(`http://127.0.0.1:${port}`),
+              target: new URL(`http://127.0.0.1:${proxy.port}`),
               signal,
             }),
             dev.exit,
@@ -336,6 +385,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    if (expiryTimer) clearTimeout(expiryTimer)
     disposeDevOutput?.()
     previewController?.abort()
     const cleanup = await lifecycle.stop(

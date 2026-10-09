@@ -119,13 +119,15 @@ it('recovers from the initial tunnel failure with the original dev PID and port'
     ),
   ).toEqual(new Set([original.pid]))
   expect(Number(new URL(String(ready.localUrl)).port)).toBe(original.port)
+  const connections = records.filter((record) => record.role === 'connection')
+  const proxyPort = connections[0]?.targetPort
+  expect(proxyPort).toBeTypeOf('number')
+  expect(proxyPort).not.toBe(original.port)
   expect(
-    records
-      .filter((record) => record.role === 'connection')
-      .map((record) => [record.attempt, record.targetPort]),
+    connections.map((record) => [record.attempt, record.targetPort]),
   ).toEqual([
-    [1, original.port],
-    [2, original.port],
+    [1, proxyPort],
+    [2, proxyPort],
   ])
   const transports = records.filter((record) => record.role === 'transport')
   expect(new Set(transports.map((record) => record.pid)).size).toBe(1)
@@ -165,8 +167,9 @@ it(`${signalCoverage}: cancels initial connect with a listening transport`, asyn
     pid: transport.pid,
     port: transport.port,
     attempt: 1,
-    targetPort: dev.port,
+    targetPort: expect.any(Number),
   })
+  expect(pending.targetPort).not.toBe(dev.port)
   await assertHttp({
     type: 'fixture',
     publicUrl: `http://127.0.0.1:${transport.port}`,
@@ -197,7 +200,7 @@ it(`${signalCoverage}: cancels reconnect after a real transport drop`, async () 
   expect(pending).toMatchObject({
     pid: replacement.pid,
     port: replacement.port,
-    targetPort: dev.port,
+    targetPort: expect.any(Number),
   })
   expect(replacement.pid).not.toBe(transport.pid)
   expect(devListener(await cli.readJournal())).toEqual(dev)
@@ -225,11 +228,14 @@ it.each([
     await cli.signal(firstSignal)
     const waiting = await cli.waitForJournal('disconnect-wait')
     expect(waiting).toMatchObject({ pid: transport.pid, port: transport.port })
-    // The second signal must reach an unfinished shutdown, while its transport still listens.
-    await assertHttp({
-      type: 'fixture',
-      publicUrl: `http://127.0.0.1:${transport.port}`,
-    })
+    // The transport may still listen, but the proxy must refuse traffic once shutdown begins.
+    expect(
+      (
+        await fetch(`http://127.0.0.1:${transport.port}`, {
+          signal: AbortSignal.timeout(3000),
+        })
+      ).status,
+    ).toBe(502)
     await cli.signal(secondSignal)
     expect(await cli.waitForExit()).toEqual({ code, signal: null })
     expect(readyCount(cli)).toBe(1)
@@ -374,9 +380,12 @@ it('replaces a dropped real transport while preserving the dev PID and port', as
   ).toEqual(new Set([original.pid]))
   const transports = records.filter((record) => record.role === 'transport')
   expect(new Set(transports.map((record) => record.pid)).size).toBe(2)
-  expect(
-    transports.every((record) => record.targetPort === original.port),
-  ).toBe(true)
+  const proxyPort = transports[0]?.targetPort
+  expect(proxyPort).toBeTypeOf('number')
+  expect(proxyPort).not.toBe(original.port)
+  expect(transports.every((record) => record.targetPort === proxyPort)).toBe(
+    true,
+  )
   expect(
     records
       .filter((record) => record.role === 'connection')
@@ -385,9 +394,7 @@ it('replaces a dropped real transport while preserving the dev PID and port', as
   expect(
     records
       .filter((record) => record.role === 'connection')
-      .every(
-        (record) => record.targetUrl === `http://127.0.0.1:${original.port}/`,
-      ),
+      .every((record) => record.targetUrl === `http://127.0.0.1:${proxyPort}/`),
   ).toBe(true)
   await stop(cli)
   assertJsonOnly(cli)

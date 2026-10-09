@@ -94,13 +94,16 @@ it('exhausts eight real short sessions while keeping one dev PID and target', as
   const records = await cli.readJournal()
   const dev = records.find((r) => r.role === 'dev' && r.port !== undefined)
   expect(dev?.pid).toBeTypeOf('number')
+  const proxyPort = records.find((r) => r.role === 'connection')?.targetPort
+  expect(proxyPort).toBeTypeOf('number')
+  expect(proxyPort).not.toBe(dev?.port)
   expect(
     new Set(records.filter((r) => r.role === 'dev').map((r) => r.pid)).size,
   ).toBe(1)
   expect(
     records
       .filter((r) => r.role === 'connection')
-      .every((r) => r.targetPort === dev?.port),
+      .every((r) => r.targetPort === proxyPort),
   ).toBe(true)
   expect(cli.events.filter((e) => e.type === 'ready')).toHaveLength(8)
   expect(

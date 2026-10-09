@@ -10,6 +10,8 @@ const stringFields: Record<string, readonly string[]> = {
   'child-output': ['stream', 'content'],
   ready: ['localUrl', 'publicUrl'],
   'lan-ready': ['url'],
+  'private-ready': ['url'],
+  access: ['mode'],
   error: ['message'],
   'doctor-check': ['name', 'status', 'message'],
   help: ['text'],
@@ -52,6 +54,15 @@ export function readJsonEvents(stdout: string): Record<string, unknown>[] {
         for (const field of ['remedy', 'detail']) {
           if (Object.hasOwn(event, field))
             expect(typeof event[field]).toBe('string')
+        }
+      }
+      if (event.type === 'access') {
+        expect(['public', 'protected', 'private']).toContain(event.mode)
+        if (Object.hasOwn(event, 'expiresAt')) {
+          expect(typeof event.expiresAt).toBe('string')
+          expect(Number.isFinite(Date.parse(String(event.expiresAt)))).toBe(
+            true,
+          )
         }
       }
       for (const field of ['url', 'localUrl', 'publicUrl']) {

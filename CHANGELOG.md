@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — Unreleased
+
+- Route public tunnel traffic through a loopback proxy that rechecks ownership
+  of the selected dev port before forwarding HTTP and WebSocket requests.
+- Add `--password` with hidden terminal input and HTTP Basic authentication at
+  the proxy. Peek removes the credential before requests reach the app.
+- Add `--private` for previews without a public tunnel, explicit `--public`,
+  and `--expires` for automatic teardown after first readiness.
+- Show access mode and expiry in terminal output and JSON events.
+
 ## 0.2.2 — 2026-09-29
 
 - Publish Peek under the canonical npm package `@usepeek/peek` while keeping

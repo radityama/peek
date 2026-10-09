@@ -1,3 +1,4 @@
+import type { AccessMode } from '../core/access.js'
 import type { DoctorCheck } from '../core/doctor.js'
 import { writeJsonEvent } from './json-event.js'
 import type { Output } from './output.js'
@@ -29,6 +30,16 @@ export class JsonOutput implements Output {
   }
   lanReady(url: string): void {
     writeJsonEvent({ type: 'lan-ready', url })
+  }
+  privateReady(url: string): void {
+    writeJsonEvent({ type: 'private-ready', url })
+  }
+  access(mode: AccessMode, expiresAt?: string): void {
+    writeJsonEvent({
+      type: 'access',
+      mode,
+      ...(expiresAt ? { expiresAt } : {}),
+    })
   }
   error(message: string): void {
     writeJsonEvent({ type: 'error', message })

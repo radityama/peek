@@ -1020,7 +1020,10 @@ it('passes the verified loopback URL to a generic provider', async () => {
     ])
     expect(selectedPort).toBeTypeOf('number')
     expect(target).toBeInstanceOf(URL)
-    expect(target?.href).toBe(`http://127.0.0.1:${selectedPort}/`)
+    expect(target?.hostname).toBe('127.0.0.1')
+    expect(target?.protocol).toBe('http:')
+    expect(Number(target?.port)).toBeGreaterThan(0)
+    expect(Number(target?.port)).not.toBe(selectedPort)
     const address = target?.href ?? ''
     const response = await fetch(address, { signal: AbortSignal.timeout(3000) })
     expect(response.status).toBe(200)

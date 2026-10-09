@@ -1,3 +1,5 @@
+import type { AccessMode } from '../core/access.js'
+
 type RuntimeEventPayload =
   | { type: 'start' }
   | { type: 'info'; message: string }
@@ -8,6 +10,8 @@ type RuntimeEventPayload =
   | { type: 'child-output'; stream: 'stdout' | 'stderr'; content: string }
   | { type: 'ready'; localUrl: string; publicUrl: string }
   | { type: 'lan-ready'; url: string }
+  | { type: 'private-ready'; url: string }
+  | { type: 'access'; mode: AccessMode; expiresAt?: string }
   | { type: 'error'; message: string }
   | {
       type: 'doctor-check'

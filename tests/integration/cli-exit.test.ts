@@ -114,7 +114,7 @@ it.each([
   {
     args: ['--json=true', '--lan', '--provider', 'cloudflare'],
     mode: 'json',
-    message: '--lan cannot',
+    message: 'private preview cannot',
   },
 ] as const)(
   'misuse $args retains status 2 and $mode stream',

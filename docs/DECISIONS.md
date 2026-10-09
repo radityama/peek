@@ -115,3 +115,14 @@ one. Ctrl+C and a dev-server exit still stop the entire lifecycle.
 **Why:** Restarting a dev server can change its port and process tree. Keeping
 it alive preserves the selected service and makes temporary network failures
 recoverable without weakening port verification.
+
+## 12. Loopback proxy for v0.3 access control
+
+**Decision:** Public and protected Quick Tunnels target a Peek HTTP/WebSocket
+proxy bound to loopback. The proxy has one fixed, verified dev target and checks
+its ownership before forwarding each request. It removes the Peek Basic auth
+header in protected mode. Lifecycle closes the tunnel, proxy, then dev tree.
+
+**Why:** Quick Tunnels cannot enforce a Peek password. Keeping access control
+at the local origin makes the behavior independent of the tunnel provider and
+allows cleanup and port verification to stay in one lifecycle.

@@ -1,7 +1,8 @@
 # Architecture
 
-Peek is one Node.js CLI package. In public mode it owns two process trees: the
-project's dev command and `cloudflared`. LAN mode owns only the dev process.
+Peek is one Node.js CLI package. In public and protected modes it owns two
+process trees, the project's dev command and `cloudflared`, plus a loopback
+proxy. Private and LAN modes own only the dev process.
 A single lifecycle object coordinates cancellation and cleanup. Optional
 `peek.config.ts` is local project code; there is no Peek configuration service.
 
@@ -10,13 +11,15 @@ flowchart TD
     CLI[CLI / flags] --> Project[Project and command selection]
     Project --> Dev[Dev process]
     Dev --> Detect[Port signals and readiness]
-    Detect -->|LAN mode| LanURL[LAN URL]
-    Project -->|public mode| Binary[Verified cloudflared cache]
+    Detect -->|private or LAN| LanURL[Local URL]
+    Project -->|public or protected| Binary[Verified cloudflared cache]
     Binary --> Provider[Tunnel provider]
-    Detect -->|public mode| Provider
+    Detect -->|public or protected| Proxy[Loopback proxy]
+    Proxy --> Provider
     Provider --> URL[Local and public URLs]
     Life[Lifecycle] -. stop .-> Dev
     Life -. stop .-> Provider
+    Life -. stop .-> Proxy
 ```
 
 ## Modules
@@ -30,6 +33,9 @@ flowchart TD
 | `src/core/config.ts` | Load and validate optional TypeScript project config. |
 | `src/core/doctor.ts` | Run local environment checks without starting a preview. |
 | `src/core/lan.ts` | Select and verify a local-network address. |
+| `src/core/access.ts` | Resolve access flags and parse expiry durations. |
+| `src/core/secret.ts` | Read a password from an interactive terminal without echo. |
+| `src/core/proxy.ts` | Authenticate and forward HTTP/WebSocket traffic to one fixed dev port. |
 | `src/core/preview-checks.ts` | Probe public host rejection and eligible HMR upgrades. |
 | `src/core/dev-command.ts` | Build safe executable/argument arrays. |
 | `src/core/process.ts` | Spawn and observe the dev process with Execa. |
@@ -51,22 +57,26 @@ flowchart TD
 
 1. Parse flags, inspect the current project, and select an argv array. An
    explicit command after `--` bypasses project inspection.
-2. In public mode, the tunnel preparation factory verifies or downloads the
+2. In public or protected mode, the tunnel preparation factory verifies or downloads the
    pinned `cloudflared` binary before starting the dev server. Register the
-   prepared provider for cleanup. LAN mode skips the tunnel engine.
+   prepared provider for cleanup. Private and LAN modes skip the tunnel engine.
 3. Snapshot common ports and an explicit `--port`, then spawn the dev command
    without a shell. Stream both output channels to the terminal and port
    detector.
 4. Select one candidate port. `--port` wins. Otherwise, emitted local URLs,
    process-owned listeners, and newly opened common ports provide evidence.
    TCP readiness is checked at `127.0.0.1`. Conflicts fail closed.
-5. Public mode starts a Quick Tunnel to that exact loopback service. A dropped
-   tunnel is retried with bounded backoff while the dev process stays alive.
-   Host-rejection and eligible HMR checks run after a valid public URL appears.
-   LAN mode verifies a private interface address and shows its local URL.
-6. If the dev server exits or the user sends SIGINT/SIGTERM, stop the tunnel
-   first and then the dev process tree. Force termination after a short grace
-   period.
+5. Public and protected modes start a loopback proxy fixed to the selected
+   dev port, then a Quick Tunnel to the proxy. The proxy re-verifies the dev
+   listener on each HTTP and WebSocket request. Protected mode checks the Peek
+   password and removes its header before forwarding. A dropped tunnel is
+   retried against the same proxy while the dev process stays alive. Public
+   mode runs host-rejection and eligible HMR checks after a valid URL appears;
+   protected mode skips probes that lack credentials. LAN mode verifies a
+   private interface address. `--private` reports the loopback dev URL.
+6. Expiry begins at the first ready URL and requests normal stop at its
+   deadline. On dev exit or SIGINT/SIGTERM, stop the tunnel, then the proxy,
+   then the dev process tree.
 
 An eligible interactive preview starts the update checker after command
 validation without awaiting it. A successful result is held until the first
@@ -79,23 +89,28 @@ sequenceDiagram
     participant User
     participant Peek
     participant Dev
+    participant Proxy
     participant CF as cloudflared
     User->>Peek: peek
     Peek->>Dev: spawn manager run dev
     Dev-->>Peek: local port evidence
     Peek->>Dev: TCP probe 127.0.0.1:port
-    Peek->>CF: tunnel --url http://127.0.0.1:port
+    Peek->>Proxy: listen on 127.0.0.1:ephemeral
+    Peek->>CF: tunnel --url http://127.0.0.1:proxy-port
     CF-->>Peek: https://name.trycloudflare.com
+    CF->>Proxy: HTTP or WebSocket request
+    Proxy->>Dev: verify selected port, then forward
     Peek-->>User: local and public URLs
     User->>Peek: Ctrl+C
     Peek->>CF: stop
+    Peek->>Proxy: close
     Peek->>Dev: stop process tree
 ```
 
 ### Progress and ownership
 
 `Lifecycle` owns the checked phase, cancellation signal, shutdown outcome,
-registered dev process and provider, signal handlers, and cleanup result.
+registered dev process, provider and proxy, signal handlers, and cleanup result.
 `runPeek` owns discovery, connection attempts, monitoring, and retry timing;
 it advances phases as those operations occur. CLI callbacks still use the
 existing output states and JSON fields rather than the internal phase names.
@@ -105,9 +120,9 @@ existing output states and JSON fields rather than the internal phase names.
 | `idle` | Command validation and provider preparation | `starting-server` |
 | `starting-server` | Start the selected argv command | `discovering-server` |
 | `discovering-server` | Reconcile port evidence and verify TCP readiness | `server-ready` |
-| `server-ready` | The selected port passed verification | `tunnel-connecting`, or `ready` for LAN |
+| `server-ready` | The selected port passed verification | `tunnel-connecting`, or `ready` for private/LAN |
 | `tunnel-connecting` | Attempt the initial tunnel connection | `ready` |
-| `ready` | A public or LAN URL was reported | `reconnecting` on a public tunnel drop |
+| `ready` | A public, private or LAN URL was reported | `reconnecting` on a public tunnel drop |
 | `reconnecting` | Replace the tunnel against the same dev port | `ready` |
 | `stopping` | Cancel pending work and clean up owned resources | `stopped` |
 | `stopped` | The cleanup attempt finished and its result is available | None |
@@ -140,9 +155,10 @@ port. `verifySelectedServer` requires the port to accept a loopback TCP
 connection and, when process inspection is available, to remain in the tracked
 tree's listener set; an unavailable inspection is not treated as ownership
 loss, so only a confirmed empty or mismatched set fails. Failure is terminal
-`SERVER_DETECTION_ERROR`, and Peek does not switch ports during a preview. This
-is not a proxy: a request that arrives after a check still reaches whatever
-owns the port at that moment.
+`SERVER_DETECTION_ERROR`, and Peek does not switch ports during a preview.
+Public and protected requests receive a further check at the proxy; a failed
+check returns 502 without forwarding. A listener replacement after the check
+remains a local timing limit.
 
 Shutdown outcome is separate from progress: `completed`, `requested`, or
 `failed` with its primary error. The first SIGINT or SIGTERM status is retained
@@ -164,7 +180,8 @@ reuse that promise. Every stop aborts pending work. Cleanup errors are returned
 as an optional actionable `PROCESS_CLEANUP_ERROR`, rather than an unobserved
 promise rejection.
 
-Cleanup runs provider first, then the dev process tree:
+Cleanup runs provider first, closes the proxy and its open sockets, then stops
+the dev process tree:
 
 | Resource | Graceful waiting budget | Escalation | Forced waiting budget |
 | --- | --- | --- | --- |
@@ -213,8 +230,8 @@ CLI composition
 
 The CLI selects options and output. `src/tunnel/prepare.ts` owns concrete
 Cloudflare construction and the verified binary dependency. Core orchestration
-passes the selected, verified `http://127.0.0.1:<port>/` target; local display
-URLs retain their existing localhost form. Cloudflare accepts root HTTP targets
+passes the proxy's loopback `http://127.0.0.1:<proxy-port>/` target; local display
+URLs retain the selected dev port. Cloudflare accepts root HTTP targets
 on that numeric loopback address with a valid port and without credentials,
 query or fragment. It rejects other origins before launching a process.
 
@@ -239,9 +256,6 @@ tunnel implementation. Host-header compatibility remains the explicit
 localhost override. Authentication, expiry and inspection are absent from
 the transport contract. Doctor may inspect the managed engine as a diagnostic.
 
-The future local proxy will enter after `server-ready` and before tunnel
-connection. Its verified loopback listener becomes the provider target while
-the dev URL remains the application target. Proxy readiness, ownership and
-shutdown order must be integrated into the lifecycle when implemented. The
-CLI and provider transport need no proxy authentication knowledge. Peek
-currently has no local proxy.
+The proxy enters after `server-ready` and before tunnel connection. Its
+loopback listener is the provider target while the dev URL remains the app
+target. The provider has no knowledge of proxy authentication or expiry.

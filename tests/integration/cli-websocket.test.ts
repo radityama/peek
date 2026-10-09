@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { request as httpRequest } from 'node:http'
 import { createConnection, type Socket } from 'node:net'
 import { afterEach, expect, it } from 'vitest'
 import { type CliHandle, startCli } from '../helpers/cli.js'
@@ -38,12 +39,13 @@ function echoedText(
   url: URL,
   text: string,
   sendWithUpgrade: boolean,
+  authorization?: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const key = randomBytes(16).toString('base64')
     const frame = maskedText(text)
     const request = Buffer.from(
-      `GET /echo-websocket HTTP/1.1\r\nHost: ${url.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${key}\r\n\r\n`,
+      `GET /echo-websocket HTTP/1.1\r\nHost: ${url.host}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${key}\r\n${authorization ? `Authorization: ${authorization}\r\n` : ''}\r\n`,
     )
     let pending = Buffer.alloc(0)
     let upgraded = false
@@ -168,3 +170,50 @@ it.each([
     await cli.assertResourcesStopped()
   },
 )
+
+it('authenticates WebSocket upgrades through the protected proxy', async () => {
+  const cli = await startCli({
+    args: ['--json', '--password'],
+    env: { PEEK_TEST_PASSWORD: 'socket preview secret' },
+  })
+  handles.push(cli)
+  const ready = await cli.waitForEvent('ready')
+  const url = new URL(String(ready.publicUrl))
+  const unauthenticated = await new Promise<number>((resolve, reject) => {
+    const request = httpRequest(url, {
+      headers: {
+        connection: 'Upgrade',
+        upgrade: 'websocket',
+        'sec-websocket-version': '13',
+        'sec-websocket-key': randomBytes(16).toString('base64'),
+      },
+    })
+    request.on('response', (response) => {
+      response.resume()
+      resolve(response.statusCode ?? 0)
+    })
+    request.on('upgrade', () =>
+      reject(new Error('Unauthorized upgrade succeeded')),
+    )
+    request.on('error', reject)
+    request.end()
+  })
+  expect(unauthenticated).toBe(401)
+  const socket = createConnection({
+    host: url.hostname,
+    port: Number(url.port),
+  })
+  sockets.push(socket)
+  socket.on('error', () => {})
+  const authorization = `Basic ${Buffer.from('peek:socket preview secret').toString('base64')}`
+  expect(
+    await echoedText(socket, url, 'protected HMR', false, authorization),
+  ).toBe('protected HMR')
+  const closed = new Promise<void>((resolve) =>
+    socket.once('close', () => resolve()),
+  )
+  await cli.signal('SIGTERM')
+  expect((await cli.waitForExit()).code).toBe(143)
+  await closed
+  await cli.assertResourcesStopped()
+})

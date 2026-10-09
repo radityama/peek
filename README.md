@@ -56,6 +56,8 @@ Peek
 Local   http://localhost:3000
 Public  https://example-words.trycloudflare.com
 
+PUBLIC PREVIEW      Anyone with this URL can access the service.
+
 Press Ctrl+C to stop
 ```
 
@@ -84,6 +86,10 @@ preview information.
 | `peek --host-header localhost` | Fix a dev server that rejects the temporary tunnel hostname. |
 | `peek -- npm start` | Run an explicit executable and arguments instead of a `dev` script. |
 | `peek --lan` | Share on the local network without a tunnel. |
+| `peek --private` | Keep Peek's preview local without starting a tunnel. |
+| `peek --public` | Explicitly share without Peek authentication. |
+| `peek --password` | Prompt privately and require a password for tunnel requests. |
+| `peek --expires 30m` | Stop the preview automatically after it becomes ready. |
 | `peek --json` | Emit newline-delimited JSON events for scripts and agents. |
 | `peek doctor` | Check the local setup, binary cache, network, and port inspection. |
 | `peek doctor --live` | Start a temporary preview and check its host and HMR behavior. |
@@ -102,13 +108,14 @@ need `--port`.
 
 ## Security
 
-**A Peek public URL exposes the selected local service to anyone who has the
-URL for as long as the tunnel is running.** Peek does not add authentication;
-an unpredictable URL is not a password. Do not run Peek against a server that
-contains secrets, private data, or unsafe development endpoints unless that
-server protects them itself. Peek sends web traffic through Cloudflare, but
-does not upload source code or collect telemetry. Read the [security
-guide](https://github.com/radityama/peek/blob/main/docs/SECURITY.md) before sharing sensitive previews.
+**A plain Peek public URL is available to anyone who has it.** Use
+`peek --password` to require HTTP Basic authentication at Peek's local proxy.
+The terminal prompts without echoing; in a browser, enter `peek` as the user
+name and your chosen password. `--private` starts no public tunnel. Peek cannot
+change the dev server's own network bind address, and Cloudflare still carries
+protected tunnel traffic. Peek does not upload source code or collect
+telemetry. Read the [security guide](https://github.com/radityama/peek/blob/main/docs/SECURITY.md)
+before sharing a sensitive preview.
 
 Cloudflare says Quick Tunnels are for testing and development, with no uptime
 guarantee. They currently do not support Server-Sent Events and limit
@@ -144,10 +151,9 @@ reporting](https://github.com/radityama/peek/security/advisories/new).
 
 ## Roadmap and license
 
-v0.2 adds LAN sharing, tunnel reconnection, diagnostics, and optional project
-configuration to automatic server discovery, temporary Cloudflare tunnels,
-QR output, and coordinated cleanup. Additional providers are ideas for later
-releases, not commitments. See the
+v0.3 adds a local reverse proxy, password protection, expiry, and explicit
+access modes to the v0.2 reliability features. Additional providers are ideas
+for later releases, not commitments. See the
 [roadmap](https://github.com/radityama/peek/blob/main/docs/ROADMAP.md).
 
 Peek is released under the [MIT license](https://github.com/radityama/peek/blob/main/LICENSE). The downloaded

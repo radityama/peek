@@ -67,11 +67,13 @@ async function assertPreview(cli: CliHandle): Promise<string> {
   ).toBe(selectedPort)
   const connections = records.filter((record) => record.role === 'connection')
   expect(connections).toHaveLength(1)
-  expect(connections[0]?.targetPort).toBe(selectedPort)
-  expect(connections[0]?.targetUrl).toBe(`http://127.0.0.1:${selectedPort}/`)
+  const proxyPort = connections[0]?.targetPort
+  expect(proxyPort).toBeTypeOf('number')
+  expect(proxyPort).not.toBe(selectedPort)
+  expect(connections[0]?.targetUrl).toBe(`http://127.0.0.1:${proxyPort}/`)
   const transports = records.filter((record) => record.role === 'transport')
   expect(transports.length).toBeGreaterThan(0)
-  expect(transports.every((record) => record.targetPort === selectedPort)).toBe(
+  expect(transports.every((record) => record.targetPort === proxyPort)).toBe(
     true,
   )
   return String(ready.publicUrl)
@@ -94,6 +96,7 @@ it('shows and serves the default terminal preview with no CLI flags', async () =
     .poll(() => cli.stdout, { timeout: 12_000 })
     .toContain('Press Ctrl+C to stop')
   expect(publicUrl()).toBeDefined()
+  expect(cli.stdout).toContain('PUBLIC PREVIEW')
   const url = new URL(publicUrl() ?? '')
   expect(
     await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),

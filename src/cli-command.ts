@@ -1,5 +1,6 @@
 import { defineCommand, parseArgs, renderUsage } from 'citty'
 import packageJson from '../package.json' with { type: 'json' }
+import { parseExpiry, selectAccessMode } from './core/access.js'
 import { loadConfig } from './core/config.js'
 import {
   type DevCommand,
@@ -12,6 +13,7 @@ import { Lifecycle } from './core/lifecycle.js'
 import { parsePort } from './core/port.js'
 import { readProject } from './core/project.js'
 import { runPeek } from './core/run.js'
+import { readPassword } from './core/secret.js'
 import { prepareProvider } from './tunnel/prepare.js'
 import type { ProviderPreparation, TunnelProvider } from './tunnel/types.js'
 import { writeJsonEvent } from './ui/json-event.js'
@@ -27,6 +29,7 @@ export interface CliDependencies {
   prepareProvider(options: ProviderPreparation): Promise<TunnelProvider>
   doctor?: typeof runDoctor
   run?: typeof runPeek
+  readPassword?: typeof readPassword
 }
 
 export async function runCli(
@@ -53,6 +56,22 @@ export async function runCli(
     },
     verbose: { type: 'boolean', description: 'Show diagnostic details' },
     lan: { type: 'boolean', description: 'Share on the local network only' },
+    public: {
+      type: 'boolean',
+      description: 'Explicitly share without Peek authentication',
+    },
+    private: {
+      type: 'boolean',
+      description: 'Keep the preview on this machine',
+    },
+    password: {
+      type: 'boolean',
+      description: 'Prompt for a preview password without echoing it',
+    },
+    expires: {
+      type: 'string',
+      description: 'Stop the preview after a duration (30m, 2h)',
+    },
     json: {
       type: 'boolean',
       description: 'Emit newline-delimited JSON events',
@@ -74,6 +93,10 @@ export async function runCli(
     qr: boolean | undefined
     verbose: boolean | undefined
     lan: boolean | undefined
+    public: boolean | undefined
+    private: boolean | undefined
+    password: boolean | undefined
+    expires: string | undefined
     json: boolean | undefined
     live: boolean | undefined
     'host-header': string | undefined
@@ -100,6 +123,10 @@ export async function runCli(
             'qr',
             'verbose',
             'lan',
+            'public',
+            'private',
+            'password',
+            'expires',
             'json',
             'live',
             'hostHeader',
@@ -143,6 +170,29 @@ export async function runCli(
       }
       if (
         isDoctor &&
+        (args.public ||
+          args.private ||
+          args.password ||
+          args.expires !== undefined)
+      ) {
+        throw new PeekError(
+          'USAGE_ERROR',
+          'Access and expiry options are not supported by peek doctor.',
+          'Run peek doctor --live without preview access flags.',
+        )
+      }
+      const accessMode = selectAccessMode(args)
+      const expiresMs =
+        args.expires === undefined ? undefined : parseExpiry(args.expires)
+      if (accessMode === 'private' && args.provider !== undefined) {
+        throw new PeekError(
+          'USAGE_ERROR',
+          'A private preview cannot use a tunnel provider.',
+          'Remove --provider or choose --public or --password.',
+        )
+      }
+      if (
+        isDoctor &&
         !args.live &&
         (args.port !== undefined ||
           args.qr !== undefined ||
@@ -179,7 +229,7 @@ export async function runCli(
           'Use --host-header localhost for a dev server that rejects the tunnel hostname.',
         )
       }
-      if (args.lan && args['host-header'] !== undefined) {
+      if (accessMode === 'private' && args['host-header'] !== undefined) {
         throw new PeekError(
           'USAGE_ERROR',
           '--host-header requires a public tunnel.',
@@ -231,6 +281,17 @@ export async function runCli(
       }
       const framework =
         project?.framework ?? (await readFramework(process.cwd()))
+      const password =
+        accessMode === 'protected'
+          ? await (dependencies?.readPassword ?? readPassword)(lifecycle.signal)
+          : undefined
+      if (password !== undefined && password.length === 0) {
+        throw new PeekError(
+          'USAGE_ERROR',
+          'Preview password cannot be empty.',
+          'Enter a nonempty password.',
+        )
+      }
 
       if (
         shouldCheckForUpdates({
@@ -252,7 +313,7 @@ export async function runCli(
       if (!isDoctor) output.title()
       if (project) output.success(`${project.packageManager} project`)
       let provider: TunnelProvider | undefined
-      if (!args.lan && selectedProvider === 'cloudflare') {
+      if (accessMode !== 'private' && selectedProvider === 'cloudflare') {
         output.info('Preparing tunnel engine...')
         provider = await (dependencies ?? { prepareProvider }).prepareProvider({
           signal: lifecycle.signal,
@@ -272,7 +333,17 @@ export async function runCli(
         command,
         ...(explicitPort === undefined ? {} : { explicitPort }),
         lifecycle,
-        ...(provider ? { provider } : { lan: true }),
+        ...(provider
+          ? { provider }
+          : args.lan
+            ? { lan: true }
+            : { privateMode: true }),
+        accessMode,
+        ...(password === undefined ? {} : { password }),
+        ...(expiresMs === undefined ? {} : { expiresMs }),
+        ...(args['host-header'] === 'localhost'
+          ? { originHostHeader: 'localhost' as const }
+          : {}),
         onState: (state) => {
           if (state === 'starting') {
             output.state(
@@ -299,6 +370,12 @@ export async function runCli(
           output.lanReady(url)
           updateNotice.ready()
         },
+        onPrivateReady: (url) => {
+          output.privateReady(url)
+          updateNotice.ready()
+        },
+        onAccess: (mode, expiresAt) => output.access(mode, expiresAt),
+        onExpired: () => output.info('Preview expired. Stopping...'),
         framework,
         onPreviewFinding: (finding) =>
           finding.kind === 'hmr-unverified'

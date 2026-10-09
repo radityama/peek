@@ -2,6 +2,7 @@ import type { TunnelProvider } from '../tunnel/types.js'
 import { PeekError } from '../utils/errors.js'
 import { cleanupDev, cleanupProvider } from './cleanup.js'
 import type { DevProcess } from './process.js'
+import type { PreviewProxy } from './proxy.js'
 
 export type LifecyclePhase =
   | 'idle'
@@ -61,6 +62,7 @@ export class Lifecycle {
   private readonly forceController = new AbortController()
   private dev: DevProcess | undefined
   private provider: TunnelProvider | undefined
+  private proxy: PreviewProxy | undefined
   private stopPromise: Promise<CleanupResult> | undefined
   private currentPhase: LifecyclePhase = 'idle'
   private shutdownOutcome: LifecycleOutcome | undefined
@@ -128,6 +130,23 @@ export class Lifecycle {
     return Promise.resolve()
   }
 
+  setProxy(proxy: PreviewProxy): Promise<void> {
+    if (this.proxy === proxy) return Promise.resolve()
+    if (this.stopPromise || this.proxy) {
+      return this.rejectRegistration(
+        proxy.close().then(
+          () => ({}),
+          (error) => ({
+            error: unexpectedCleanup(error, 'Preview proxy cleanup failed.'),
+          }),
+        ),
+        !this.stopPromise && this.proxy !== undefined,
+      )
+    }
+    this.proxy = proxy
+    return Promise.resolve()
+  }
+
   requestStop(exitCode?: number): void {
     if (exitCode !== undefined && this.signalExitCode === undefined) {
       this.signalExitCode = exitCode
@@ -190,6 +209,13 @@ export class Lifecycle {
           errors.push(
             unexpectedCleanup(error, 'Tunnel cleanup failed unexpectedly.'),
           )
+        }
+      }
+      if (this.proxy) {
+        try {
+          await this.proxy.close()
+        } catch (error) {
+          errors.push(unexpectedCleanup(error, 'Preview proxy cleanup failed.'))
         }
       }
       if (this.dev) {
