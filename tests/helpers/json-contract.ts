@@ -63,3 +63,20 @@ export function readJsonEvents(stdout: string): Record<string, unknown>[] {
       return event
     })
 }
+
+const devCleanupUncertainty =
+  'Dev server cleanup failed to confirm resource shutdown.'
+
+// A dev root that exits before its creation identity is observed yields a
+// second conservative cleanup error. Callers assert the primary failure and
+// allow only this signal as the extra error.
+export function isDevCleanupUncertainty(event: {
+  type?: unknown
+  message?: unknown
+}): boolean {
+  return (
+    event.type === 'error' &&
+    typeof event.message === 'string' &&
+    event.message.includes(devCleanupUncertainty)
+  )
+}

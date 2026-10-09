@@ -297,6 +297,9 @@ function windowsArgs(script: string): string[] {
 const windowsInspectionTimeout = 10_000
 const windowsTerminationTimeout = 1_500
 
+const UNCERTAIN_ANCESTRY =
+  'Windows tracked dev resources stopped, but root-first exit left unobserved ancestry; full resource shutdown is unconfirmed.'
+
 function windowsJob(
   script: string,
   signal: AbortSignal,
@@ -422,7 +425,18 @@ try {
       if ($item.row.pid -eq ${root}) { $rootKilled = $true }
     }
   }
-  @{rootKilled=$rootKilled} | ConvertTo-Json -Compress
+  # Reap every identified process here so the observer can confirm shutdown
+  # without launching a second full-table snapshot. A shared deadline keeps the
+  # wait inside the termination bound even for a large tree.
+  $remaining = 0
+  $deadline = (Get-Date).AddMilliseconds(500)
+  foreach ($item in $held) {
+    while (!$item.process.HasExited -and (Get-Date) -lt $deadline) {
+      $null = $item.process.WaitForExit(50)
+    }
+    if (!$item.process.HasExited) { $remaining++ }
+  }
+  @{rootKilled=$rootKilled;remaining=$remaining} | ConvertTo-Json -Compress
 } finally { foreach ($item in $held) { $item.process.Dispose() } }
 `
 }
@@ -509,9 +523,7 @@ export function ownWindowsTree(
             uncertain = true
           if (live.size === 0) {
             if (uncertain || (rootExited && !rootTerminationVerified)) {
-              throw new Error(
-                'Windows tracked dev resources stopped, but root-first exit left unobserved ancestry; full resource shutdown is unconfirmed.',
-              )
+              throw new Error(UNCERTAIN_ANCESTRY)
             }
             stopped = true
             return
@@ -541,6 +553,17 @@ export function ownWindowsTree(
           }
           rootTerminationVerified ||= result.rootKilled
           if (rootExited && !rootTerminationVerified) uncertain = true
+          const remaining =
+            'remaining' in result && typeof result.remaining === 'number'
+              ? result.remaining
+              : undefined
+          if (remaining === 0) {
+            // Termination reaped every identified process, so no separate
+            // confirmation snapshot is needed.
+            if (uncertain) throw new Error(UNCERTAIN_ANCESTRY)
+            stopped = true
+            return
+          }
         }
         await delay(performance.now() - started < 1000 ? 100 : 250, undefined, {
           signal: owner.signal,

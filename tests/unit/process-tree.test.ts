@@ -116,6 +116,57 @@ it('terminates tracked Windows root-first resources and preserves ancestry uncer
   }
 })
 
+it('confirms Windows shutdown from a reaped termination without another snapshot', async () => {
+  const native = child()
+  let snapshots = 0
+  let terminations = 0
+  const job = async (script: string): Promise<string> => {
+    if (script.includes('$rootKilled')) {
+      terminations++
+      return JSON.stringify({ rootKilled: true, remaining: 0 })
+    }
+    snapshots++
+    return JSON.stringify([{ pid: 123, parent: 1, born: '100' }])
+  }
+  const tree = ownWindowsTree(native, job)
+  try {
+    await delay(0)
+    tree.kill('SIGTERM')
+    await expect(
+      tree.waitForStop(new AbortController().signal),
+    ).resolves.toBeUndefined()
+    expect(snapshots).toBe(1)
+    expect(terminations).toBe(1)
+  } finally {
+    tree.dispose()
+  }
+})
+
+it('reports unobserved ancestry when termination reaps tracked rows but never killed the root', async () => {
+  const native = child()
+  const job = async (script: string): Promise<string> => {
+    if (script.includes('$rootKilled'))
+      return JSON.stringify({ rootKilled: false, remaining: 0 })
+    return JSON.stringify([
+      { pid: 123, parent: 1, born: '100' },
+      { pid: 124, parent: 123, born: '200' },
+    ])
+  }
+  const tree = ownWindowsTree(native, job)
+  try {
+    await delay(0)
+    native.emit('exit', 7, null)
+    tree.kill('SIGTERM')
+    await expect(
+      tree.waitForStop(new AbortController().signal),
+    ).rejects.toThrow(/unobserved ancestry/)
+    expect(() => tree.kill('SIGKILL')).toThrow(/unobserved ancestry/)
+  } finally {
+    tree.dispose()
+    expect(native.listenerCount('exit')).toBe(0)
+  }
+})
+
 it.each(['posix', 'windows-before-initialization'] as const)(
   'aborts a real in-flight inspector during abrupt %s owner exit',
   async (platform) => {

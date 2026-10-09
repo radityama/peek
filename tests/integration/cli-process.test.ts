@@ -5,7 +5,10 @@ import {
   type JournalRecord,
   startCli,
 } from '../helpers/cli.js'
-import { readJsonEvents } from '../helpers/json-contract.js'
+import {
+  isDevCleanupUncertainty,
+  readJsonEvents,
+} from '../helpers/json-contract.js'
 
 const handles: CliHandle[] = []
 afterEach(async () => {
@@ -251,8 +254,10 @@ it('fails when the dev server exits after readiness and closes its transport wit
   process.kill(dev.pid, 'SIGTERM')
   expect(await cli.waitForExit()).toEqual({ code: 1, signal: null })
   const errors = cli.events.filter((event) => event.type === 'error')
-  expect(errors).toHaveLength(1)
-  expect(errors[0]?.message).toContain('Development server exited with code')
+  const primary = errors.filter((event) => !isDevCleanupUncertainty(event))
+  expect(primary).toHaveLength(1)
+  expect(primary[0]?.message).toContain('Development server exited with code')
+  expect(errors.length).toBeLessThanOrEqual(2)
   expect(readyCount(cli)).toBe(1)
   expect(cli.events.some((event) => event.kind === 'tunnel-dropped')).toBe(
     false,
