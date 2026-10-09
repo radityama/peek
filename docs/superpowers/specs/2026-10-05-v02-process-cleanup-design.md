@@ -1,6 +1,8 @@
 # v0.2 Adversarial Process Cleanup
 
 Status: approach and written spec approved in conversation on 2026-10-05.
+Delivered on 2026-10-09; the implementation plan is complete and PR #16 was
+squash-merged to main as `1966601` with all six required CI jobs green.
 Implementation follows the [process cleanup plan](../plans/2026-10-05-v02-process-cleanup.md).
 
 Baseline: main `2e1569b`, package `@usepeek/peek` 0.2.2. PRs #10 through #15
