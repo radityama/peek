@@ -85,6 +85,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
   const { cwd, command, explicitPort, lifecycle, provider } = options
   const signal = lifecycle.signal
   let previewController: AbortController | undefined
+  let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
   try {
     if (provider) await lifecycle.setProvider(provider)
@@ -98,16 +99,22 @@ export async function runPeek(options: RunOptions): Promise<void> {
     await lifecycle.setDev(dev)
     signal.throwIfAborted()
     const signals = new PortSignals()
-    dev.stdout.on('data', (chunk: Buffer | string) => {
+    const onStdout = (chunk: Buffer | string): void => {
       const text = chunk.toString()
       signals.addChunk(text)
       options.onDevOutput?.('stdout', text)
-    })
-    dev.stderr.on('data', (chunk: Buffer | string) => {
+    }
+    const onStderr = (chunk: Buffer | string): void => {
       const text = chunk.toString()
       signals.addChunk(text)
       options.onDevOutput?.('stderr', text)
-    })
+    }
+    dev.stdout.on('data', onStdout)
+    dev.stderr.on('data', onStderr)
+    disposeDevOutput = () => {
+      dev.stdout.removeListener('data', onStdout)
+      dev.stderr.removeListener('data', onStderr)
+    }
     let devExited = false
     let devExit: ProcessExit | undefined
     void dev.exit.then((exit) => {
@@ -310,6 +317,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    disposeDevOutput?.()
     previewController?.abort()
     const cleanup = await lifecycle.stop(
       primary ? { kind: 'failed', error: primary.error } : undefined,

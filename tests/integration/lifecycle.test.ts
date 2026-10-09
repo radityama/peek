@@ -639,6 +639,61 @@ it('preserves an independent failure thrown after a requested stop', async () =>
   ).rejects.toBe(failure)
 })
 
+it('stops forwarding dev output once the preview releases its callbacks', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const setDev = vi.spyOn(lifecycle, 'setDev')
+  const late: string[] = []
+  let readySeen = false
+  let resolveReady: () => void = () => {}
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve
+  })
+  const running = runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider: fakeProvider(),
+    onDevOutput: (_stream, text) => {
+      if (readySeen && text.includes('late-after-stop')) late.push(text)
+    },
+    onReady: () => {
+      readySeen = true
+      resolveReady()
+    },
+  })
+  await ready
+  lifecycle.requestStop()
+  await expect(running).resolves.toBeUndefined()
+  const dev = setDev.mock.calls[0]?.[0]
+  expect(dev).toBeDefined()
+  const external = vi.fn()
+  dev?.stdout.on('data', external)
+  dev?.stdout.emit('data', Buffer.from('late-after-stop\n'))
+  expect(external).toHaveBeenCalledTimes(1)
+  expect(late).toEqual([])
+})
+
+it('restores owned signal listener counts after repeated runs', async () => {
+  const before = {
+    sigint: process.listenerCount('SIGINT'),
+    sigterm: process.listenerCount('SIGTERM'),
+  }
+  for (let run = 0; run < 3; run++) {
+    const lifecycle = new Lifecycle()
+    lifecycle.installSignals()
+    await runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: fakeProvider(),
+      onReady: () => lifecycle.requestStop(),
+    })
+  }
+  expect(process.listenerCount('SIGINT')).toBe(before.sigint)
+  expect(process.listenerCount('SIGTERM')).toBe(before.sigterm)
+})
+
 function deferred<T>(): {
   promise: Promise<T>
   resolve: (value: T) => void
