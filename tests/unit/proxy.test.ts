@@ -34,6 +34,7 @@ async function listen(server: Server): Promise<number> {
 function requestThroughProxy(
   port: number,
   upgrade = false,
+  extraHeaders: Record<string, string> = {},
 ): Promise<{
   status: number
   headers: IncomingMessage['headers']
@@ -44,12 +45,15 @@ function requestThroughProxy(
       host: '127.0.0.1',
       port,
       path: '/',
-      headers: upgrade
-        ? { connection: 'Upgrade', upgrade: 'websocket' }
-        : {
-            connection: 'keep-alive, x-request-hop',
-            'x-request-hop': 'remove',
-          },
+      headers: {
+        ...(upgrade
+          ? { connection: 'Upgrade', upgrade: 'websocket' }
+          : {
+              connection: 'keep-alive, x-request-hop',
+              'x-request-hop': 'remove',
+            }),
+        ...extraHeaders,
+      },
     })
     request.setTimeout(3000, () =>
       request.destroy(new Error('Proxy timed out')),
@@ -181,6 +185,62 @@ it('ends a rejected upgrade if the origin terminates its body early', async () =
   })
   proxies.push(proxy)
   await expect(requestThroughProxy(proxy.port, true)).rejects.toThrow()
+})
+
+it('keeps failed HTTP guesses and cross-origin upgrades away from the origin', async () => {
+  let httpRequests = 0
+  let upgrades = 0
+  const server = createServer((_request, response) => {
+    httpRequests++
+    response.end('allowed')
+  })
+  server.on('upgrade', (_request, socket) => {
+    upgrades++
+    socket.end(
+      'HTTP/1.1 426 Upgrade Required\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnope',
+    )
+  })
+  const targetPort = await listen(server)
+  const proxy = await startPreviewProxy({
+    targetPort,
+    password: 'secret',
+    publicOrigin: () => 'https://active.trycloudflare.com',
+    verifyTarget: async () => {},
+    now: () => 0,
+  })
+  proxies.push(proxy)
+  for (let index = 0; index < 12; index++) {
+    const response = await fetch(`http://127.0.0.1:${proxy.port}`)
+    expect(response.status).toBe(401)
+    await response.arrayBuffer()
+  }
+  expect((await fetch(`http://127.0.0.1:${proxy.port}`)).status).toBe(429)
+  expect(httpRequests).toBe(0)
+  const authorization = `Basic ${Buffer.from('peek:secret').toString('base64')}`
+  const accepted = await fetch(`http://127.0.0.1:${proxy.port}`, {
+    headers: { authorization },
+  })
+  expect(accepted.status).toBe(200)
+  expect(await accepted.text()).toBe('allowed')
+  expect(httpRequests).toBe(1)
+  expect(
+    (
+      await requestThroughProxy(proxy.port, true, {
+        authorization,
+        origin: 'https://attacker.example',
+      })
+    ).status,
+  ).toBe(403)
+  expect(upgrades).toBe(0)
+  expect(
+    (
+      await requestThroughProxy(proxy.port, true, {
+        authorization,
+        origin: 'https://active.trycloudflare.com',
+      })
+    ).status,
+  ).toBe(426)
+  expect(upgrades).toBe(1)
 })
 
 it('refuses a request when the selected dev listener can no longer be verified', async () => {

@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import {
   createServer,
   request as httpRequest,
@@ -9,6 +8,7 @@ import {
 import type { Socket } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { PeekError } from '../utils/errors.js'
+import { createAuthGate, validWebSocketOrigin } from './proxy-auth.js'
 
 export interface PreviewProxy {
   readonly port: number
@@ -20,6 +20,8 @@ export interface ProxyOptions {
   verifyTarget: () => Promise<void>
   password?: string
   originHostHeader?: 'localhost'
+  publicOrigin?: () => string | undefined
+  now?: () => number
 }
 
 function headersForOrigin(
@@ -57,19 +59,6 @@ function removeHopByHop(headers: OutgoingHttpHeaders): void {
   for (const name of hopByHop) delete headers[name]
 }
 
-function authorized(header: string | undefined, digest: Buffer): boolean {
-  const match = /^Basic ([A-Za-z0-9+/]+={0,2})$/.exec(header ?? '')
-  if (!match) return false
-  const encoded = match[1]
-  if (!encoded) return false
-  const decoded = Buffer.from(encoded, 'base64')
-  if (decoded.toString('base64') !== encoded) return false
-  const credential = decoded.toString('utf8')
-  if (!credential.startsWith('peek:')) return false
-  const supplied = createHash('sha256').update(credential.slice(5)).digest()
-  return timingSafeEqual(supplied, digest)
-}
-
 function rejectHttp(response: ServerResponse, status: number): void {
   if (response.headersSent) {
     response.destroy()
@@ -81,17 +70,27 @@ function rejectHttp(response: ServerResponse, status: number): void {
     ...(status === 401
       ? { 'www-authenticate': 'Basic realm="Peek preview", charset="UTF-8"' }
       : {}),
+    ...(status === 429 ? { 'retry-after': '5' } : {}),
   })
   response.end(
     status === 401
       ? 'Authentication required\n'
-      : 'Preview server unavailable\n',
+      : status === 429
+        ? 'Too many authentication attempts\n'
+        : 'Preview server unavailable\n',
   )
 }
 
 function rejectSocket(socket: Duplex, status: number): void {
   if (socket.destroyed) return
-  const reason = status === 401 ? 'Unauthorized' : 'Bad Gateway'
+  const reason =
+    status === 401
+      ? 'Unauthorized'
+      : status === 403
+        ? 'Forbidden'
+        : status === 429
+          ? 'Too Many Requests'
+          : 'Bad Gateway'
   socket.end(
     `HTTP/1.1 ${status} ${reason}\r\n` +
       'Content-Type: text/plain; charset=utf-8\r\n' +
@@ -99,6 +98,7 @@ function rejectSocket(socket: Duplex, status: number): void {
       (status === 401
         ? 'WWW-Authenticate: Basic realm="Peek preview", charset="UTF-8"\r\n'
         : '') +
+      (status === 429 ? 'Retry-After: 5\r\n' : '') +
       'Content-Length: 0\r\nConnection: close\r\n\r\n',
   )
 }
@@ -133,16 +133,19 @@ function rejectedUpgradeHead(response: IncomingMessage): string {
 export async function startPreviewProxy(
   options: ProxyOptions,
 ): Promise<PreviewProxy> {
-  const digest =
+  const authenticate =
     options.password === undefined
       ? undefined
-      : createHash('sha256').update(options.password).digest()
+      : createAuthGate(options.password, options.now)
   const sockets = new Set<Socket>()
   const server = createServer((incoming, response) => {
-    if (digest && !authorized(incoming.headers.authorization, digest)) {
-      incoming.resume()
-      rejectHttp(response, 401)
-      return
+    if (authenticate) {
+      const status = authenticate(incoming.headers.authorization)
+      if (status !== 200) {
+        incoming.resume()
+        rejectHttp(response, status)
+        return
+      }
     }
     void options.verifyTarget().then(
       () => {
@@ -187,9 +190,18 @@ export async function startPreviewProxy(
     socket.on('error', () => socket.destroy())
   })
   server.on('upgrade', (incoming, socket, head) => {
-    if (digest && !authorized(incoming.headers.authorization, digest)) {
-      rejectSocket(socket, 401)
-      return
+    if (authenticate) {
+      const status = authenticate(incoming.headers.authorization)
+      if (status !== 200) {
+        rejectSocket(socket, status)
+        return
+      }
+      if (
+        !validWebSocketOrigin(incoming.headers.origin, options.publicOrigin?.())
+      ) {
+        rejectSocket(socket, 403)
+        return
+      }
     }
     void options.verifyTarget().then(
       () => {
@@ -233,6 +245,9 @@ export async function startPreviewProxy(
       () => rejectSocket(socket, 502),
     )
   })
+  server.headersTimeout = 10_000
+  server.maxHeadersCount = 100
+  server.maxConnections = 128
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)

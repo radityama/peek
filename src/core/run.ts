@@ -243,9 +243,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
     await recheckListener()
+    let currentPublicOrigin: string | undefined
     const proxy = await startPreviewProxy({
       targetPort: port,
       verifyTarget: recheckListener,
+      publicOrigin: () => currentPublicOrigin,
       ...(options.password === undefined ? {} : { password: options.password }),
       ...(options.originHostHeader === undefined
         ? {}
@@ -335,6 +337,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (connected.kind === 'dev') throw serverExit(connected.exit)
           signal.throwIfAborted()
           connection = connected.value
+          currentPublicOrigin = new URL(connection.url).origin
           connectedAt = now()
         } catch (error) {
           if (
@@ -369,6 +372,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       options.onState?.('reconnecting')
       signal.throwIfAborted()
       recovery.dropped(sessionDurationMs)
+      currentPublicOrigin = undefined
       connection = undefined
     }
   } catch (error) {

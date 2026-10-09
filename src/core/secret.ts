@@ -17,6 +17,9 @@ interface SecretOutput {
   write(value: string): unknown
 }
 
+const maxPasswordBytes = 1_024
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
 export async function readPassword(
   signal: AbortSignal,
   input: SecretInput = process.stdin,
@@ -31,11 +34,11 @@ export async function readPassword(
   }
   output.write('Preview password: ')
   const previousRaw = input.isRaw
-  input.setRawMode(true)
-  input.resume()
   const bytes: number[] = []
   let value: string
   try {
+    input.setRawMode(true)
+    input.resume()
     value = await new Promise<string>((resolve, reject) => {
       const onData = (chunk: Buffer): void => {
         for (const byte of chunk) {
@@ -47,7 +50,28 @@ export async function readPassword(
           }
           if (byte === 13 || byte === 10) {
             cleanup()
-            resolve(Buffer.from(bytes).toString('utf8'))
+            try {
+              resolve(utf8.decode(Buffer.from(bytes)))
+            } catch {
+              reject(
+                new PeekError(
+                  'USAGE_ERROR',
+                  'Password input is not valid UTF-8.',
+                  'Enter a valid Unicode password and retry.',
+                ),
+              )
+            }
+            return
+          }
+          if (byte === 4) {
+            cleanup()
+            reject(
+              new PeekError(
+                'USAGE_ERROR',
+                'Password input ended.',
+                'Restart Peek in an interactive terminal.',
+              ),
+            )
             return
           }
           if (byte === 127 || byte === 8) {
@@ -56,7 +80,20 @@ export async function readPassword(
             bytes.pop()
             continue
           }
-          if (byte >= 32) bytes.push(byte)
+          if (byte >= 32) {
+            if (bytes.length >= maxPasswordBytes) {
+              cleanup()
+              reject(
+                new PeekError(
+                  'USAGE_ERROR',
+                  'Preview password is too long.',
+                  'Use a password of at most 1024 UTF-8 bytes.',
+                ),
+              )
+              return
+            }
+            bytes.push(byte)
+          }
         }
       }
       const onEnd = (): void => {

@@ -49,3 +49,66 @@ it('restores terminal mode when interrupted', async () => {
   await expect(result).rejects.toThrow('stopped')
   expect(tty.raw.mock.calls).toEqual([[true], [false]])
 })
+
+it('treats Ctrl+C as an interrupt without echoing input', async () => {
+  const tty = terminal()
+  const controller = new AbortController()
+  const onSignal = (): void => controller.abort(new Error('interrupted'))
+  process.once('SIGINT', onSignal)
+  try {
+    const result = readPassword(controller.signal, tty.input, tty.output)
+    const input = tty.input as PassThrough
+    input.write(Buffer.from([3]))
+    await expect(result).rejects.toThrow('interrupted')
+    expect(tty.written()).toBe('Preview password: \n')
+    expect(tty.raw.mock.calls).toEqual([[true], [false]])
+  } finally {
+    process.off('SIGINT', onSignal)
+  }
+})
+
+it('rejects terminal EOF and restores raw mode', async () => {
+  const tty = terminal()
+  const result = readPassword(
+    new AbortController().signal,
+    tty.input,
+    tty.output,
+  )
+  const input = tty.input as PassThrough
+  input.end()
+  await expect(result).rejects.toThrow('Password input ended')
+  expect(tty.raw.mock.calls).toEqual([[true], [false]])
+})
+
+it.each([
+  ['empty password', Buffer.from('\r'), 'cannot be empty'],
+  ['Ctrl+D', Buffer.from([4]), 'Password input ended'],
+  ['invalid UTF-8', Buffer.from([0xc3, 0x28, 13]), 'valid UTF-8'],
+  ['oversized password', Buffer.from('a'.repeat(1_025)), 'too long'],
+] as const)(
+  'rejects %s and restores terminal mode',
+  async (_name, data, message) => {
+    const tty = terminal()
+    const result = readPassword(
+      new AbortController().signal,
+      tty.input,
+      tty.output,
+    )
+    const input = tty.input as PassThrough
+    input.write(data)
+    await expect(result).rejects.toThrow(message)
+    expect(tty.raw.mock.calls).toEqual([[true], [false]])
+    expect(tty.written()).toBe('Preview password: \n')
+  },
+)
+
+it('restores terminal mode when raw input setup throws', async () => {
+  const tty = terminal()
+  tty.raw.mockImplementationOnce(() => {
+    throw new Error('raw mode failed')
+  })
+  await expect(
+    readPassword(new AbortController().signal, tty.input, tty.output),
+  ).rejects.toThrow('raw mode failed')
+  expect(tty.raw.mock.calls).toEqual([[true], [false]])
+})
