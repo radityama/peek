@@ -45,6 +45,10 @@ it('keeps --private on loopback without preparing a tunnel', async () => {
   const ready = await cli.waitForEvent('private-ready')
   expect(new URL(String(ready.url)).hostname).toBe('localhost')
   expect((await cli.waitForEvent('access')).mode).toBe('private')
+  const caveat = await cli.waitForEvent('info', (event) =>
+    String(event.message).includes('local network'),
+  )
+  expect(caveat.message).toContain('may still be reachable')
   expect(await (await fetch(String(ready.url))).text()).toBe('peek fixture')
   expect(
     (await cli.readJournal()).some((record) => record.role === 'connection'),
