@@ -434,6 +434,7 @@ export function ownWindowsTree(
   let initialized = false
   let uncertain = false
   let known = new Map<number, WindowsMember>()
+  let inspection: AbortController | undefined
   const started = performance.now()
   const onExit = (): void => {
     rootExited = true
@@ -447,50 +448,67 @@ export function ownWindowsTree(
       failure === undefined &&
       root !== undefined
     ) {
+      const controller = new AbortController()
+      const relay = (): void => controller.abort(owner.signal.reason)
+      owner.signal.addEventListener('abort', relay, { once: true })
+      if (owner.signal.aborted) relay()
+      inspection = controller
+      let inspecting = !(request && initialized)
       try {
-        const current = windowsMembers(await job(windowsSnapshot, owner.signal))
+        let current: WindowsMember[] | undefined
+        if (inspecting) {
+          current = windowsMembers(
+            await job(windowsSnapshot, controller.signal),
+          )
+        }
         if (released) return
-        if (!initialized) {
-          const rootMember = current.find((member) => member.pid === root)
-          if (!rootMember || rootExited) {
-            throw new Error(
-              'Windows dev root exited before its creation identity could be established; resource shutdown is unconfirmed.',
-            )
-          }
-          known.set(root, rootMember)
-          initialized = true
-        }
-        const live = new Map(
-          current
-            .filter((member) => known.get(member.pid)?.born === member.born)
-            .map((member) => [member.pid, member]),
-        )
-        let added: boolean
-        do {
-          added = false
-          for (const member of current) {
-            const parent = live.get(member.parent)
-            if (
-              !live.has(member.pid) &&
-              parent &&
-              BigInt(member.born) >= BigInt(parent.born)
-            ) {
-              live.set(member.pid, member)
-              added = true
+        if (current) {
+          if (!initialized) {
+            const rootMember = current.find((member) => member.pid === root)
+            if (!rootMember || rootExited) {
+              throw new Error(
+                'Windows dev root exited before its creation identity could be established; resource shutdown is unconfirmed.',
+              )
             }
+            known.set(root, rootMember)
+            initialized = true
           }
-        } while (added)
-        if (rootExited && !rootTerminationVerified && !request) uncertain = true
-        if (live.size === 0) {
-          if (uncertain || (rootExited && !rootTerminationVerified)) {
-            throw new Error(
-              'Windows tracked dev resources stopped, but root-first exit left unobserved ancestry; full resource shutdown is unconfirmed.',
-            )
+          const live = new Map(
+            current
+              .filter((member) => known.get(member.pid)?.born === member.born)
+              .map((member) => [member.pid, member]),
+          )
+          let added: boolean
+          do {
+            added = false
+            for (const member of current) {
+              const parent = live.get(member.parent)
+              if (
+                !live.has(member.pid) &&
+                parent &&
+                BigInt(member.born) >= BigInt(parent.born)
+              ) {
+                live.set(member.pid, member)
+                added = true
+              }
+            }
+          } while (added)
+          if (rootExited && !rootTerminationVerified && !request)
+            uncertain = true
+          if (live.size === 0) {
+            if (uncertain || (rootExited && !rootTerminationVerified)) {
+              throw new Error(
+                'Windows tracked dev resources stopped, but root-first exit left unobserved ancestry; full resource shutdown is unconfirmed.',
+              )
+            }
+            stopped = true
+            return
           }
-          stopped = true
-          return
+          known = live
         }
-        known = live
+        // Past this point the failure is a termination problem, not an
+        // inspection problem, so it must not be swallowed below.
+        inspecting = false
         if (request) {
           request = false
           const result: unknown = JSON.parse(
@@ -516,7 +534,22 @@ export function ownWindowsTree(
           signal: owner.signal,
         })
       } catch (error) {
-        if (!owner.signal.aborted) failure = error
+        if (owner.signal.aborted || released) return
+        if (
+          inspecting &&
+          (controller.signal.aborted || (request && initialized))
+        ) {
+          // A termination request cancelled this inspection, or arrived while
+          // it was in flight. The termination job re-enumerates CIM itself, so
+          // act on the last known identities instead of failing cleanup on a
+          // transient inspection miss.
+          continue
+        }
+        failure = error
+        return
+      } finally {
+        if (inspection === controller) inspection = undefined
+        owner.signal.removeEventListener('abort', relay)
       }
     }
   }
@@ -547,6 +580,7 @@ export function ownWindowsTree(
       if (released || stopped) return
       if (failure !== undefined) throw failure
       request = true
+      if (initialized) inspection?.abort()
     },
     async waitForStop(signal) {
       const onAbort = (): void => owner.abort(signal.reason)

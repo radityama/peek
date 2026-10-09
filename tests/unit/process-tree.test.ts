@@ -188,3 +188,43 @@ it.each(['posix', 'windows-before-initialization'] as const)(
     }
   },
 )
+
+it('terminates from the last known identities when a pending inspection is cancelled', async () => {
+  const native = child()
+  let announceSecond!: () => void
+  const secondStarted = new Promise<void>((resolve) => {
+    announceSecond = resolve
+  })
+  let snapshots = 0
+  let terminated = false
+  const job = (script: string, signal: AbortSignal): Promise<string> => {
+    if (script.includes('$rootKilled')) {
+      terminated = true
+      return Promise.resolve(JSON.stringify({ rootKilled: true }))
+    }
+    snapshots += 1
+    if (snapshots === 1)
+      return Promise.resolve(
+        JSON.stringify([{ pid: 123, parent: 1, born: '100' }]),
+      )
+    if (terminated) return Promise.resolve('[]')
+    announceSecond()
+    return new Promise<string>((_resolve, reject) => {
+      const abort = (): void => reject(new Error('inspection cancelled'))
+      if (signal.aborted) abort()
+      else signal.addEventListener('abort', abort, { once: true })
+    })
+  }
+  const tree = ownWindowsTree(native, job)
+  try {
+    await secondStarted
+    const stopped = tree.waitForStop(new AbortController().signal)
+    // The inspection is in flight; killing must cancel it and terminate from the
+    // last known identities rather than fail cleanup on a transient miss.
+    tree.kill('SIGTERM')
+    await expect(stopped).resolves.toBeUndefined()
+    expect(terminated).toBe(true)
+  } finally {
+    tree.dispose()
+  }
+})
