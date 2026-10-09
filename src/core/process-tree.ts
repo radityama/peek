@@ -273,9 +273,7 @@ interface WindowsMember {
   born: string
 }
 
-// Internal source export: termination embeds it and the native timing probe
-// measures the production command rather than a duplicated copy.
-export const windowsSnapshot = `ConvertTo-Json -Compress -InputObject @(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
+const windowsSnapshot = `ConvertTo-Json -Compress -InputObject @(@(Get-CimInstance Win32_Process -ErrorAction Stop) | ForEach-Object {
   if ($null -ne $_.CreationDate) {
     @{pid=[int]$_.ProcessId;parent=[int]$_.ParentProcessId;born=$_.CreationDate.ToUniversalTime().Ticks.ToString()}
   }
@@ -293,7 +291,17 @@ function windowsArgs(script: string): string[] {
   ]
 }
 
-function windowsJob(script: string, signal: AbortSignal): Promise<string> {
+// The cleanup observation signal owns inspection lifetime; this bound is only a
+// safety net for a hung PowerShell, not a cleanup deadline. Termination keeps
+// the tighter bound because it runs inside the lifecycle waiting budgets.
+const windowsInspectionTimeout = 10_000
+const windowsTerminationTimeout = 1_500
+
+function windowsJob(
+  script: string,
+  signal: AbortSignal,
+  timeout = windowsTerminationTimeout,
+): Promise<string> {
   signal.throwIfAborted()
   return new Promise((resolve, reject) => {
     const inspector = execFile(
@@ -301,7 +309,7 @@ function windowsJob(script: string, signal: AbortSignal): Promise<string> {
       windowsArgs(script),
       {
         encoding: 'utf8',
-        timeout: 1500,
+        timeout,
         killSignal: 'SIGKILL',
         windowsHide: true,
         maxBuffer: 4 * 1024 * 1024,
@@ -458,7 +466,11 @@ export function ownWindowsTree(
         let current: WindowsMember[] | undefined
         if (inspecting) {
           current = windowsMembers(
-            await job(windowsSnapshot, controller.signal),
+            await job(
+              windowsSnapshot,
+              controller.signal,
+              windowsInspectionTimeout,
+            ),
           )
         }
         if (released) return
