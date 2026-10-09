@@ -74,7 +74,7 @@ only when a material API detail is unresolved.
 - Modify: `tests/helpers/cli.ts`
 - Modify: `src/core/process.ts`
 
-- [ ] **Step 1: Add the controlled pipe fixture and one root-observation test**
+- [x] **Step 1: Add the controlled pipe fixture and one root-observation test**
 
 Start the new fixture with this complete root/child path. The later tasks can
 extend the control protocol; do not replace the ordinary HTTP/WS fixture.
@@ -182,13 +182,13 @@ const fixture = options.fixture === 'adversarial'
 The wrapper and explicit command must both use that selected local file.
 The default remains the ordinary fixture; production CLI code has no test flag.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run `pnpm exec vitest run tests/integration/process.test.ts -t 'root exit'`.
 Expected: the two-second sentinel wins while the child retains stdout/stderr.
 Inspect journal evidence and make sure fallback kills the descendant.
 
-- [ ] **Step 3: Map the direct process events without waiting for Execa**
+- [x] **Step 3: Map the direct process events without waiting for Execa**
 
 Use this root-observation implementation inside spawnDev after stream checks.
 Keep an observed Execa result for its output/diagnostic and cleanup internals.
@@ -262,7 +262,7 @@ The resource adapter in Task 2 must retain unexpected Execa completion errors
 even if root status was already reported; observing them is not permission to
 hide a distinct resource observation failure.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 Run `pnpm exec vitest run tests/integration/process.test.ts tests/integration/cli-process.test.ts tests/integration/cli-exit.test.ts`,
 then `pnpm lint` and `pnpm typecheck`. Expected: prompt root status, existing
@@ -425,7 +425,7 @@ Run `pnpm lint` and `pnpm typecheck`; commit
 - Modify: `tests/fixtures/cli/adversarial.mjs`, `tests/helpers/cli.ts`
 - Modify: `tests/integration/cli-adversarial.test.ts`, `tests/integration/lifecycle.test.ts`, `tests/integration/server.test.ts`
 
-- [ ] **Step 1: Reproduce retained output ownership**
+- [x] **Step 1: Reproduce retained output ownership**
 
 Use a real runPeek invocation and Lifecycle.setDev to capture its adapter.
 After stopping, retain an unrelated data listener and emit a late data chunk;
@@ -462,7 +462,7 @@ Remove only those callbacks. Observe both fulfillment and rejection of
 root-status observation; do not leave the existing fire-and-forget then
 capable of creating an unhandled rejection.
 
-- [ ] **Step 2: Run RED, apply the callback change and run GREEN**
+- [x] **Step 2: Run RED, apply the callback change and run GREEN**
 
 Run `pnpm exec vitest run tests/integration/lifecycle.test.ts -t 'output|partial|repeated'`
 before and after implementation. Expected: late output exposes the retained
@@ -470,7 +470,7 @@ callback before the fix; the fixed operation keeps caller-owned listeners
 and restores owned signal counts. Commit
 `fix: release dev output callbacks after preview shutdown`.
 
-- [ ] **Step 3: Investigate disappeared, moved and replaced listeners**
+- [x] **Step 3: Investigate disappeared, moved and replaced listeners**
 
 Extend the fixture's child control protocol to close its listener while
 remaining alive, or listen on a new ephemeral port. Tests wait for a recorded
@@ -518,7 +518,7 @@ Propagate cancellation through bounded execFile calls. Windows direct-only
 fallback is positive evidence for the root listener, not proof that no
 descendant owns a listener. Do not weaken startup ownership checks.
 
-- [ ] **Step 4: Run listener RED, then revalidate outside recoverable tunnel errors**
+- [x] **Step 4: Run listener RED, then revalidate outside recoverable tunnel errors**
 
 Run `pnpm exec vitest run tests/integration/cli-adversarial.test.ts -t 'listener|port'`.
 Expected: the original loop reconnects to an unavailable or unrelated listener.
@@ -540,7 +540,7 @@ Run lint and typecheck; commit `fix: recheck the selected dev listener before re
 - Modify: `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`
 - Update task checkboxes and status: this plan and its spec
 
-- [ ] **Step 1: Write the authoritative behavior and limitations**
+- [x] **Step 1: Write the authoritative behavior and limitations**
 
 Add a root-versus-resource explanation to the process/cleanup architecture,
 matching the actual adapter. Update the dev forced-wait table to resource

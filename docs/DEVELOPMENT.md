@@ -114,6 +114,36 @@ prove Cloudflare availability, TLS, public hostname handling, or framework
 HMR compatibility. Host rejection uses a synthetic nonlocal Host value, and
 the WebSocket echo server is a small fixture rather than a framework install.
 
+### Process cleanup and listener revalidation
+
+```sh
+pnpm exec vitest run tests/integration/process.test.ts tests/integration/cli-adversarial.test.ts tests/integration/cli-process.test.ts tests/integration/cli-reconnect.test.ts tests/integration/lifecycle.test.ts tests/unit/cleanup.test.ts tests/unit/lifecycle.test.ts
+```
+
+`tests/integration/process.test.ts` runs a real root with a retained descendant
+and reads process state independently of CLI output. Linux reads
+`/proc/<pid>/stat`, macOS runs `ps -p <pid> -o stat=`, and other platforms use a
+zero-signal liveness probe; `absent` is reported only when the process is gone,
+and a transient disappearance between probes is not an error.
+
+Native coverage differs by platform. POSIX tests send real SIGINT and SIGTERM
+and assert exit status, root and descendant state, and listener closure.
+Windows tests cover an intact tracked tree, root-first termination that reports
+unobserved ancestry separately, and a labelled IPC handler that runs cleanup
+through real Execa processes; they do not exercise native console Ctrl+C, which
+remains a manual stress test. libuv assigns non-detached Windows children to a
+global kill-on-close job object, so the retained-pipe root-exit case is skipped
+there and the Windows creation-identity case covers root exit instead.
+
+The listener tests confirm that a fixed selected port which becomes
+unreachable, or which leaves the tracked tree's listener set, fails as terminal
+`SERVER_DETECTION_ERROR` without switching ports, and that an unavailable
+inspection is not treated as ownership loss. A descendant detached from the
+tracked root, a root whose creation identity was never observed, and an
+external host reaper can each end a process outside Peek's observation; Peek
+then reports unconfirmed shutdown rather than claiming success. Those cases are
+recorded as limitations, not proven by the deterministic tests.
+
 ### Tunnel recovery tests
 
 ```sh
