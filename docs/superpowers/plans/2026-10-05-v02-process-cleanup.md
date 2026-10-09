@@ -561,7 +561,7 @@ Do not claim native Windows console Ctrl+C, live Cloudflare or framework
 dogfooding from these tests. Record actual supported/skipped cases in the
 phase report; Task 8 remains separate.
 
-- [ ] **Step 2: Review and run the delivery gates**
+- [x] **Step 2: Review and run the delivery gates**
 
 Run the task review, then a whole-branch review against main. Route source
 findings through an implementer, with covering tests and scoped rereview.
@@ -571,7 +571,7 @@ Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
 The packed smoke covers version/help/config import; broader installed preview
 flows remain in cross-cutting validation. Commit `docs: explain process cleanup and listener revalidation`.
 
-- [ ] **Step 3: Publish, inspect and merge only a healthy PR**
+- [x] **Step 3: Publish, inspect and merge only a healthy PR**
 
 Push this branch and update PR #16 with the problem, motivation, implementation,
 architectural impact, tests, risks, compatibility and follow-up sections.
