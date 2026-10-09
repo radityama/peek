@@ -114,7 +114,12 @@ it.skipIf(process.platform === 'win32')(
   1000,
 )
 
-it('reports root exit before an inherited pipe closes', async () => {
+// libuv assigns non-detached Windows children to a global kill-on-close job
+// object (src/win/process.c), so this fixture's descendant cannot outlive the
+// root and the inherited pipes close with it. The retained-pipe scenario is
+// POSIX-only; Windows root exit is covered by the creation-identity case here
+// and the adversarial CLI cases.
+async function retainedPipeScenario(): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), 'peek-root-exit-'))
   const journal = join(directory, 'journal.jsonl')
   const stopFile = join(directory, 'stop-descendant')
@@ -194,7 +199,12 @@ it('reports root exit before an inherited pipe closes', async () => {
     clearTimeout(timer)
     await fallback()
   }
-})
+}
+
+it.skipIf(process.platform === 'win32')(
+  'reports root exit before an inherited pipe closes',
+  retainedPipeScenario,
+)
 
 async function controlledTree(
   options: {
