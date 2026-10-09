@@ -91,10 +91,12 @@ it('shows and serves the default terminal preview with no CLI flags', async () =
   handles.push(cli)
   const publicUrl = (): string | undefined =>
     cli.stdout.match(/^Public\s+(http:\/\/127\.0\.0\.1:\d+)\s*$/m)?.[1]
-  // The URL block and stop hint can arrive in separate stdout chunks.
+  // The access banner is written after the stop hint, so wait on the line the
+  // assertion depends on instead of the earlier hint.
   await expect
     .poll(() => cli.stdout, { timeout: 12_000 })
-    .toContain('Press Ctrl+C to stop')
+    .toContain('PUBLIC PREVIEW')
+  expect(cli.stdout).toContain('Press Ctrl+C to stop')
   expect(publicUrl()).toBeDefined()
   expect(cli.stdout).toContain('PUBLIC PREVIEW')
   const url = new URL(publicUrl() ?? '')
