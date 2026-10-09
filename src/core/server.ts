@@ -331,6 +331,11 @@ async function lsofListening(
   }
 }
 
+// The Windows readers enumerate the whole CIM process table and TCP table,
+// which costs ~1s idle and more under the parallel CI load. Match
+// process-tree's inspection bound so a slow reader is not misread as absent.
+const windowsListenerInspectionTimeout = 10_000
+
 async function inspectWindows(
   rootPid: number,
   signal?: AbortSignal,
@@ -342,7 +347,7 @@ async function inspectWindows(
     const { stdout: netstat } = await execFileAsync(
       'netstat',
       ['-ano', '-p', 'tcp'],
-      { timeout: 2000, signal },
+      { timeout: windowsListenerInspectionTimeout, signal },
     )
     directAvailable = true
     for (const line of netstat.split('\n')) {
@@ -368,7 +373,7 @@ async function inspectWindows(
     const { stdout } = await execFileAsync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', script],
-      { timeout: 2000, signal },
+      { timeout: windowsListenerInspectionTimeout, signal },
     )
     descendantsAvailable = true
     for (const value of stdout.trim().split(/\s+/)) {
