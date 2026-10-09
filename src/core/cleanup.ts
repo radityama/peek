@@ -39,22 +39,35 @@ async function boundedWait(
 const diagnosticLimit = 400
 
 // execFile embeds its full argv in the error message, and a process-inspection
-// job can carry a large encoded payload. Keep the stderr detail that follows
-// the command line and bound whatever is reported.
+// job can carry a large encoded payload. Report the program plus any stderr
+// detail and execution metadata, and bound the result.
 function diagnostic(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error)
-  const lines = text
+  if (!(error instanceof Error)) return String(error)
+  const exec = error as NodeJS.ErrnoException & {
+    killed?: boolean
+    signal?: string | null
+  }
+  const meta = [
+    exec.code !== undefined && exec.code !== null
+      ? `code=${String(exec.code)}`
+      : undefined,
+    exec.signal ? `signal=${exec.signal}` : undefined,
+    exec.killed ? 'killed' : undefined,
+  ].filter((part): part is string => part !== undefined)
+  const lines = error.message
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
-  const detail =
-    lines[0]?.startsWith('Command failed:') === true
-      ? lines.slice(1).join(' ')
-      : lines.join(' ')
-  const bounded = detail.length > 0 ? detail : (lines[0] ?? '')
-  return bounded.length > diagnosticLimit
-    ? `${bounded.slice(0, diagnosticLimit)}...`
-    : bounded
+  const failed = /^Command failed: (\S+)/.exec(lines[0] ?? '')
+  const detail = lines.slice(failed ? 1 : 0).join(' ')
+  const program = failed?.[1]
+  const base = program ? `\`${program}\` failed` : detail || error.name
+  const withDetail = program && detail.length > 0 ? `${base}: ${detail}` : base
+  const summary =
+    meta.length > 0 ? `${withDetail} (${meta.join(', ')})` : withDetail
+  return summary.length > diagnosticLimit
+    ? `${summary.slice(0, diagnosticLimit)}...`
+    : summary
 }
 
 function failure(

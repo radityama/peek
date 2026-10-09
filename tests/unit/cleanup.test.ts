@@ -336,8 +336,24 @@ describe('bounded resource cleanup', () => {
     process.waitForStop = () => Promise.reject(cause)
     const result = await cleanupDev(process, new AbortController().signal)
     expect(result.error?.message).toContain(
-      'Cleanup cause: Dev process inspection returned invalid creation identity evidence.',
+      'Cleanup cause: `powershell.exe` failed: Dev process inspection returned invalid creation identity evidence.',
     )
     expect(result.error?.message).not.toContain('A'.repeat(500))
+  })
+
+  it('reports an inspection timeout through its execution metadata', async () => {
+    const cause = Object.assign(
+      new Error('Command failed: ps -e -o pid=,pgid=,stat=,lstart='),
+      { killed: true, signal: 'SIGKILL', code: null },
+    )
+    const process = dev(Promise.resolve(exited))
+    process.kill = vi.fn(() => {
+      throw cause
+    })
+    process.waitForStop = () => Promise.reject(cause)
+    const result = await cleanupDev(process, new AbortController().signal)
+    expect(result.error?.message).toContain(
+      'Cleanup cause: `ps` failed (signal=SIGKILL, killed)',
+    )
   })
 })
