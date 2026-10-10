@@ -29,6 +29,28 @@ async function readJournal(journal: string): Promise<Record[]> {
     .map((line) => JSON.parse(line) as Record)
 }
 
+// A Windows child that exits while its current working directory is the
+// fixture temp dir can release that handle a beat after the process state
+// reads as absent. Rmdir then races EBUSY. Give the handle a moment to clear;
+// a persistent EBUSY still surfaces as a real failure.
+async function removeTree(directory: string): Promise<void> {
+  const deadline = Date.now() + 2000
+  for (;;) {
+    try {
+      await rm(directory, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const busy =
+        process.platform === 'win32' &&
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'EBUSY'
+      if (!busy || Date.now() >= deadline) throw error
+      await delay(200)
+    }
+  }
+}
+
 async function waitForPipeClosure(dev: DevProcess): Promise<void> {
   const deadline = Date.now() + 2000
   while (!dev.stdout.closed || !dev.stderr.closed) {
@@ -67,7 +89,7 @@ it('reports a real unavailable command with missing-command classification', asy
   } finally {
     dev.kill('SIGKILL')
     dev.dispose()
-    await rm(directory, { recursive: true, force: true })
+    await removeTree(directory)
   }
 })
 
@@ -157,9 +179,10 @@ async function retainedPipeScenario(): Promise<void> {
       confirmed = true
     } finally {
       dev.dispose()
-      if (confirmed) await rm(directory, { recursive: true, force: true })
+      if (confirmed) await removeTree(directory)
     }
   }
+
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const deadline = Date.now() + 5000
@@ -255,7 +278,7 @@ async function controlledTree(
       try {
         await waitForPipeClosure(dev)
       } finally {
-        if (confirmed) await rm(directory, { recursive: true, force: true })
+        if (confirmed) await removeTree(directory)
       }
     }
   }
@@ -340,7 +363,7 @@ it('cooperatively disposes controlled-tree resources when setup misses its check
         await delay(25)
       }
       spawned.dispose()
-      await rm(directory, { recursive: true, force: true })
+      await removeTree(directory)
     }
   }
   try {

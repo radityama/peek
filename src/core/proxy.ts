@@ -140,6 +140,10 @@ export async function startPreviewProxy(
   })
   server.on('connection', (socket) => {
     sockets.add(socket)
+    // A client that resets mid-request must not crash the proxy with an
+    // unhandled 'error' event; the matching upstream socket is reaped by its
+    // own handlers.
+    socket.on('error', () => socket.destroy())
     socket.once('close', () => sockets.delete(socket))
   })
   server.on('upgrade', (incoming, socket, head) => {
