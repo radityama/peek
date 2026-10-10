@@ -62,7 +62,7 @@ export async function runCli(
     },
     private: {
       type: 'boolean',
-      description: 'Keep the preview on this machine',
+      description: 'Run without a public tunnel',
     },
     password: {
       type: 'boolean',
@@ -372,6 +372,9 @@ export async function runCli(
         },
         onPrivateReady: (url) => {
           output.privateReady(url)
+          output.info(
+            'No public tunnel is running. Your dev server may still be reachable on the local network.',
+          )
           updateNotice.ready()
         },
         onAccess: (mode, expiresAt) => output.access(mode, expiresAt),

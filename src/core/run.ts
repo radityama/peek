@@ -101,6 +101,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
   let expiresAt: string | undefined
   let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
+  let expiryFailure: { error: unknown } | undefined
   try {
     if (provider) await lifecycle.setProvider(provider)
     signal.throwIfAborted()
@@ -208,8 +209,13 @@ export async function runPeek(options: RunOptions): Promise<void> {
       if (options.expiresMs !== undefined && expiresAt === undefined) {
         expiresAt = new Date(Date.now() + options.expiresMs).toISOString()
         expiryTimer = setTimeout(() => {
-          options.onExpired?.()
-          lifecycle.requestStop()
+          if (signal.aborted) return
+          try {
+            options.onExpired?.()
+          } catch (error) {
+            expiryFailure = { error }
+          }
+          if (!signal.aborted) lifecycle.requestStop()
         }, options.expiresMs)
       }
       options.onAccess?.(options.accessMode ?? 'public', expiresAt)
@@ -249,9 +255,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
     }
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
+    let currentPublicOrigin: string | undefined
     const proxy = await startPreviewProxy({
       targetPort: port,
       verifyTarget: recheckListener,
+      publicOrigin: () => currentPublicOrigin,
       ...(options.password === undefined ? {} : { password: options.password }),
       ...(options.originHostHeader === undefined
         ? {}
@@ -272,7 +280,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       })
       reportAccess()
       signal.throwIfAborted()
-      if (options.framework && !options.password) {
+      if (options.framework) {
         previewController?.abort()
         previewController = new AbortController()
         const previewSignal = AbortSignal.any([
@@ -284,6 +292,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
           connection.url,
           options.framework,
           previewSignal,
+          options.password === undefined
+            ? {}
+            : {
+                authorization: `Basic ${Buffer.from(`peek:${options.password}`).toString('base64')}`,
+              },
         ).then(
           (findings) => {
             if (previewSignal.aborted) return
@@ -341,6 +354,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (connected.kind === 'dev') throw serverExit(connected.exit)
           signal.throwIfAborted()
           connection = connected.value
+          currentPublicOrigin = new URL(connection.url).origin
           connectedAt = now()
         } catch (error) {
           if (
@@ -375,6 +389,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       options.onState?.('reconnecting')
       signal.throwIfAborted()
       recovery.dropped(sessionDurationMs)
+      currentPublicOrigin = undefined
       connection = undefined
     }
   } catch (error) {
@@ -391,6 +406,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    if (expiryFailure && !primary) primary = expiryFailure
     if (expiryTimer) clearTimeout(expiryTimer)
     disposeDevOutput?.()
     previewController?.abort()

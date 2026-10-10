@@ -69,6 +69,25 @@ it('formats expected errors with an actionable hint and no stack', () => {
   expect(formatError(error, true)).toContain('Details: internal detail')
 })
 
+it('surfaces nested aggregate cleanup causes in verbose output', () => {
+  const root = new Error('Windows root exited before ancestry was observed')
+  const inner = new PeekError(
+    'PROCESS_CLEANUP_ERROR',
+    'Dev server cleanup failed to confirm resource shutdown.',
+    'Retry.',
+    new AggregateError([root], 'Resource cleanup failed'),
+  )
+  const outer = new PeekError(
+    'PROCESS_CLEANUP_ERROR',
+    'Preview cleanup failed.',
+    'Retry.',
+    new AggregateError([inner], 'Preview cleanup failed'),
+  )
+  expect(formatError(outer, true)).toContain(
+    'Windows root exited before ancestry was observed',
+  )
+})
+
 it('renders QR only when the terminal is interactive and large enough', () => {
   expect(shouldRenderQr('auto', true, 80, 30, 40, 20)).toBe(true)
   expect(shouldRenderQr('on', false, 80, 30, 40, 20)).toBe(false)

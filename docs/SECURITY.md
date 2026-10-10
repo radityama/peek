@@ -28,6 +28,26 @@ password over the tunnel's HTTPS URL. The proxy checks the credential on every
 HTTP and WebSocket request with a fixed-length digest comparison and removes
 Peek's `Authorization` header before forwarding. An app that needs its own
 `Authorization` header cannot use that header through a protected preview.
+The password prompt accepts at most 1024 UTF-8 bytes. Malformed Basic
+credentials are rejected. Peek permits a burst of 12 failed authentication
+attempts, then refills one attempt every five seconds. This limit is shared
+by the proxy because `cloudflared` connects locally and forwarded client-IP
+headers are not trusted. Correct credentials still work while guesses are
+throttled; the policy slows rapid guessing but cannot stop a determined
+attacker. The proxy allows at most 128 simultaneous local connections, 100
+headers per request, and ten seconds to complete request headers. These limits
+bound local resource use but cannot guarantee availability under attack. Use a
+strong password.
+
+For protected browser WebSockets, Peek requires the `Origin` header to match
+the active public preview URL. It rejects malformed, cross-site, and stale
+origins after reconnect. Clients without an `Origin` header can connect with
+the correct password; `Origin` is a browser protection, not an identity check.
+HTTP Basic credentials may not be sent by every browser or framework HMR
+client on a WebSocket handshake. If HMR does not authenticate, use an
+unprotected preview only for content safe to share, or test through local
+access. This browser behavior still needs live Cloudflare validation.
+
 The dev server's direct port remains reachable locally and may be reachable
 on the LAN if the dev command binds an external interface; Peek's password
 does not protect direct access to that port. Cloudflare terminates the public
@@ -35,6 +55,10 @@ HTTPS connection and can inspect traffic it carries. `--private` starts no
 public tunnel but does not force the dev server to bind loopback. `--lan`
 intentionally advertises a local-network URL. `--expires` starts at first
 readiness and requests coordinated cleanup when its deadline arrives.
+The duration uses an elapsed-time timer and does not reset after a tunnel
+reconnect. The displayed UTC `expiresAt` is calculated from the wall clock at
+first readiness, so a later clock adjustment can make that label differ from
+the remaining elapsed time.
 
 Cloudflare carries public HTTP traffic for the tunnel. Read [Cloudflare's
 Quick Tunnel documentation and terms](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)

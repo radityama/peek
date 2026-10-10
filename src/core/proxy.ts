@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import {
   createServer,
   request as httpRequest,
@@ -9,6 +8,7 @@ import {
 import type { Socket } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { PeekError } from '../utils/errors.js'
+import { createAuthGate, validWebSocketOrigin } from './proxy-auth.js'
 
 export interface PreviewProxy {
   readonly port: number
@@ -20,6 +20,8 @@ export interface ProxyOptions {
   verifyTarget: () => Promise<void>
   password?: string
   originHostHeader?: 'localhost'
+  publicOrigin?: () => string | undefined
+  now?: () => number
 }
 
 function headersForOrigin(
@@ -27,7 +29,7 @@ function headersForOrigin(
   options: ProxyOptions,
 ): OutgoingHttpHeaders {
   const headers: OutgoingHttpHeaders = { ...incoming.headers }
-  delete headers.connection
+  removeHopByHop(headers)
   delete headers['proxy-authorization']
   delete headers['proxy-connection']
   if (options.password !== undefined) delete headers.authorization
@@ -35,17 +37,26 @@ function headersForOrigin(
   return headers
 }
 
-function authorized(header: string | undefined, digest: Buffer): boolean {
-  const match = /^Basic ([A-Za-z0-9+/]+={0,2})$/.exec(header ?? '')
-  if (!match) return false
-  const encoded = match[1]
-  if (!encoded) return false
-  const decoded = Buffer.from(encoded, 'base64')
-  if (decoded.toString('base64') !== encoded) return false
-  const credential = decoded.toString('utf8')
-  if (!credential.startsWith('peek:')) return false
-  const supplied = createHash('sha256').update(credential.slice(5)).digest()
-  return timingSafeEqual(supplied, digest)
+const hopByHop = [
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'proxy-connection',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+] as const
+
+function removeHopByHop(headers: OutgoingHttpHeaders): void {
+  const connection = headers.connection
+  const nominations = Array.isArray(connection)
+    ? connection.join(',')
+    : String(connection ?? '')
+  for (const name of nominations.split(','))
+    delete headers[name.trim().toLowerCase()]
+  for (const name of hopByHop) delete headers[name]
 }
 
 function rejectHttp(response: ServerResponse, status: number): void {
@@ -59,17 +70,27 @@ function rejectHttp(response: ServerResponse, status: number): void {
     ...(status === 401
       ? { 'www-authenticate': 'Basic realm="Peek preview", charset="UTF-8"' }
       : {}),
+    ...(status === 429 ? { 'retry-after': '5' } : {}),
   })
   response.end(
     status === 401
       ? 'Authentication required\n'
-      : 'Preview server unavailable\n',
+      : status === 429
+        ? 'Too many authentication attempts\n'
+        : 'Preview server unavailable\n',
   )
 }
 
 function rejectSocket(socket: Duplex, status: number): void {
   if (socket.destroyed) return
-  const reason = status === 401 ? 'Unauthorized' : 'Bad Gateway'
+  const reason =
+    status === 401
+      ? 'Unauthorized'
+      : status === 403
+        ? 'Forbidden'
+        : status === 429
+          ? 'Too Many Requests'
+          : 'Bad Gateway'
   socket.end(
     `HTTP/1.1 ${status} ${reason}\r\n` +
       'Content-Type: text/plain; charset=utf-8\r\n' +
@@ -77,6 +98,7 @@ function rejectSocket(socket: Duplex, status: number): void {
       (status === 401
         ? 'WWW-Authenticate: Basic realm="Peek preview", charset="UTF-8"\r\n'
         : '') +
+      (status === 429 ? 'Retry-After: 5\r\n' : '') +
       'Content-Length: 0\r\nConnection: close\r\n\r\n',
   )
 }
@@ -92,19 +114,38 @@ function responseHead(response: IncomingMessage): string {
   return `${lines.join('\r\n')}\r\n\r\n`
 }
 
+function rejectedUpgradeHead(response: IncomingMessage): string {
+  const headers: OutgoingHttpHeaders = { ...response.headers }
+  removeHopByHop(headers)
+  // IncomingMessage has already decoded transfer framing. Preserve a fixed
+  // length when supplied; otherwise the response ends when this socket closes.
+  headers.connection = 'close'
+  const status = response.statusCode ?? 502
+  const lines = [`HTTP/1.1 ${status} ${response.statusMessage ?? ''}`]
+  for (const [name, value] of Object.entries(headers)) {
+    if (value === undefined) continue
+    for (const item of Array.isArray(value) ? value : [value])
+      lines.push(`${name}: ${item}`)
+  }
+  return `${lines.join('\r\n')}\r\n\r\n`
+}
+
 export async function startPreviewProxy(
   options: ProxyOptions,
 ): Promise<PreviewProxy> {
-  const digest =
+  const authenticate =
     options.password === undefined
       ? undefined
-      : createHash('sha256').update(options.password).digest()
+      : createAuthGate(options.password, options.now)
   const sockets = new Set<Socket>()
   const server = createServer((incoming, response) => {
-    if (digest && !authorized(incoming.headers.authorization, digest)) {
-      incoming.resume()
-      rejectHttp(response, 401)
-      return
+    if (authenticate) {
+      const status = authenticate(incoming.headers.authorization)
+      if (status !== 200) {
+        incoming.resume()
+        rejectHttp(response, status)
+        return
+      }
     }
     void options.verifyTarget().then(
       () => {
@@ -118,8 +159,13 @@ export async function startPreviewProxy(
             headers: headersForOrigin(incoming, options),
           })
           upstream.on('response', (origin) => {
-            response.writeHead(origin.statusCode ?? 502, origin.headers)
+            const headers: OutgoingHttpHeaders = { ...origin.headers }
+            removeHopByHop(headers)
+            response.writeHead(origin.statusCode ?? 502, headers)
             origin.on('error', () => response.destroy())
+            origin.on('close', () => {
+              if (!origin.complete) response.destroy()
+            })
             origin.pipe(response)
           })
           upstream.on('error', () => rejectHttp(response, 502))
@@ -147,9 +193,18 @@ export async function startPreviewProxy(
     socket.once('close', () => sockets.delete(socket))
   })
   server.on('upgrade', (incoming, socket, head) => {
-    if (digest && !authorized(incoming.headers.authorization, digest)) {
-      rejectSocket(socket, 401)
-      return
+    if (authenticate) {
+      const status = authenticate(incoming.headers.authorization)
+      if (status !== 200) {
+        rejectSocket(socket, status)
+        return
+      }
+      if (
+        !validWebSocketOrigin(incoming.headers.origin, options.publicOrigin?.())
+      ) {
+        rejectSocket(socket, 403)
+        return
+      }
     }
     void options.verifyTarget().then(
       () => {
@@ -157,6 +212,7 @@ export async function startPreviewProxy(
           if (socket.destroyed) return
           const headers = headersForOrigin(incoming, options)
           headers.connection = 'Upgrade'
+          headers.upgrade = incoming.headers.upgrade
           const upstream = httpRequest({
             host: '127.0.0.1',
             port: options.targetPort,
@@ -175,8 +231,11 @@ export async function startPreviewProxy(
             socket.pipe(originSocket).pipe(socket)
           })
           upstream.on('response', (origin) => {
-            socket.write(responseHead(origin))
+            socket.write(rejectedUpgradeHead(origin))
             origin.on('error', () => socket.destroy())
+            origin.on('close', () => {
+              if (!origin.complete) socket.destroy()
+            })
             origin.pipe(socket)
           })
           upstream.on('error', () => rejectSocket(socket, 502))
@@ -189,6 +248,9 @@ export async function startPreviewProxy(
       () => rejectSocket(socket, 502),
     )
   })
+  server.headersTimeout = 10_000
+  server.maxHeadersCount = 100
+  server.maxConnections = 128
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
