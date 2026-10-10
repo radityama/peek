@@ -106,6 +106,45 @@ it('starts a fake server and tunnel and cleans both on cancellation', async () =
   expect(isRunning(tunnelPids.at(-1) ?? 0)).toBe(false)
 })
 
+it('does not force cleanup when expiry and a stop request occur together', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const provider = fakeProvider()
+  const forced = vi.spyOn(provider, 'forceDisconnect')
+  const expired = vi.fn(() => lifecycle.requestStop(130))
+  await runPeek({
+    cwd: process.cwd(),
+    command: { file: process.execPath, args: [serverFile] },
+    lifecycle,
+    provider,
+    expiresMs: 50,
+    onExpired: expired,
+  })
+  expect(expired).toHaveBeenCalledOnce()
+  expect(forced).not.toHaveBeenCalled()
+  expect(lifecycle.signalExitCode).toBe(130)
+  expect(lifecycle.isStopped).toBe(true)
+})
+
+it('stops owned resources if the expiry notification throws', async () => {
+  const lifecycle = new Lifecycle()
+  lifecycles.push(lifecycle)
+  const failure = new Error('expiry output failed')
+  await expect(
+    runPeek({
+      cwd: process.cwd(),
+      command: { file: process.execPath, args: [serverFile] },
+      lifecycle,
+      provider: fakeProvider(),
+      expiresMs: 50,
+      onExpired: () => {
+        throw failure
+      },
+    }),
+  ).rejects.toBe(failure)
+  expect(lifecycle.isStopped).toBe(true)
+})
+
 it('reaches preview readiness while the registry request remains pending', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'peek-update-startup-'))
   const lifecycle = new Lifecycle()

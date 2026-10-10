@@ -100,6 +100,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
   let expiresAt: string | undefined
   let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
+  let expiryFailure: { error: unknown } | undefined
   try {
     if (provider) await lifecycle.setProvider(provider)
     signal.throwIfAborted()
@@ -201,8 +202,13 @@ export async function runPeek(options: RunOptions): Promise<void> {
       if (options.expiresMs !== undefined && expiresAt === undefined) {
         expiresAt = new Date(Date.now() + options.expiresMs).toISOString()
         expiryTimer = setTimeout(() => {
-          options.onExpired?.()
-          lifecycle.requestStop()
+          if (signal.aborted) return
+          try {
+            options.onExpired?.()
+          } catch (error) {
+            expiryFailure = { error }
+          }
+          if (!signal.aborted) lifecycle.requestStop()
         }, options.expiresMs)
       }
       options.onAccess?.(options.accessMode ?? 'public', expiresAt)
@@ -394,6 +400,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    if (expiryFailure && !primary) primary = expiryFailure
     if (expiryTimer) clearTimeout(expiryTimer)
     disposeDevOutput?.()
     previewController?.abort()

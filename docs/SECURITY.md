@@ -52,6 +52,10 @@ HTTPS connection and can inspect traffic it carries. `--private` starts no
 public tunnel but does not force the dev server to bind loopback. `--lan`
 intentionally advertises a local-network URL. `--expires` starts at first
 readiness and requests coordinated cleanup when its deadline arrives.
+The duration uses an elapsed-time timer and does not reset after a tunnel
+reconnect. The displayed UTC `expiresAt` is calculated from the wall clock at
+first readiness, so a later clock adjustment can make that label differ from
+the remaining elapsed time.
 
 Cloudflare carries public HTTP traffic for the tunnel. Read [Cloudflare's
 Quick Tunnel documentation and terms](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
