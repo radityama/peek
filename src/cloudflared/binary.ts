@@ -1,15 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
-import {
-  chmod,
-  lstat,
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+import { createReadStream, createWriteStream } from 'node:fs'
+import { chmod, lstat, mkdir, rename, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { Readable, Transform, type TransformCallback } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { execa } from 'execa'
 import { PeekError } from '../utils/errors.js'
 import {
@@ -88,23 +83,22 @@ export async function ensureCloudflared(
     const signal = options.signal
       ? AbortSignal.any([options.signal, timeout])
       : timeout
-    const bytes = await downloadAsset(
+    const assetDigest = await downloadAsset(
       asset.url,
+      asset.archive ? temporaryArchive : temporaryBinary,
+      asset.archive ? 0o600 : 0o700,
       options.fetcher ?? fetch,
       signal,
     )
-    if (sha256(bytes) !== asset.assetSha256) {
+    if (assetDigest !== asset.assetSha256) {
       throw new Error(`SHA-256 mismatch for ${asset.name}`)
     }
 
     if (asset.archive) {
-      await writeFile(temporaryArchive, bytes, { mode: 0o600 })
       await execa('tar', ['-xOzf', temporaryArchive, 'cloudflared'], {
         stdout: { file: temporaryBinary },
         timeout: 30_000,
       })
-    } else {
-      await writeFile(temporaryBinary, bytes, { mode: 0o700 })
     }
     if (!(await validCachedBinary(temporaryBinary, asset.binarySha256))) {
       throw new Error(`Executable SHA-256 mismatch for ${asset.name}`)
@@ -164,8 +158,9 @@ async function validCachedBinary(
   try {
     const stat = await lstat(path)
     if (!stat.isFile()) return false
-    const bytes = await readFile(path)
-    return sha256(bytes) === expectedHash
+    const hash = createHash('sha256')
+    for await (const chunk of createReadStream(path)) hash.update(chunk)
+    return hash.digest('hex') === expectedHash
   } catch {
     return false
   }
@@ -173,9 +168,11 @@ async function validCachedBinary(
 
 async function downloadAsset(
   url: string,
+  destination: string,
+  mode: number,
   fetcher: typeof fetch,
   signal: AbortSignal,
-): Promise<Buffer> {
+): Promise<string> {
   let current = url
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
     const parsed = new URL(current)
@@ -199,19 +196,41 @@ async function downloadAsset(
     if (!response.ok || !response.body) {
       throw new Error(`Cloudflared download returned HTTP ${response.status}`)
     }
-    const chunks: Buffer[] = []
-    let total = 0
-    for await (const chunk of response.body) {
-      total += chunk.byteLength
-      if (total > MAX_ASSET_BYTES)
-        throw new Error('Cloudflared asset exceeded size limit')
-      chunks.push(Buffer.from(chunk))
-    }
-    return Buffer.concat(chunks)
+    return await writeVerifiedBody(response.body, destination, mode)
   }
   throw new Error('Cloudflared download redirected too many times')
 }
 
-function sha256(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex')
+/**
+ * Stream the response to disk while hashing and enforcing the size limit, so a
+ * first download never holds the whole asset in memory.
+ */
+async function writeVerifiedBody(
+  body: ReadableStream<Uint8Array>,
+  destination: string,
+  mode: number,
+): Promise<string> {
+  const hash = createHash('sha256')
+  let total = 0
+  const meter = new Transform({
+    transform(
+      chunk: Buffer,
+      _encoding: BufferEncoding,
+      callback: TransformCallback,
+    ): void {
+      total += chunk.byteLength
+      if (total > MAX_ASSET_BYTES) {
+        callback(new Error('Cloudflared asset exceeded size limit'))
+        return
+      }
+      hash.update(chunk)
+      callback(null, chunk)
+    },
+  })
+  await pipeline(
+    Readable.fromWeb(body),
+    meter,
+    createWriteStream(destination, { mode }),
+  )
+  return hash.digest('hex')
 }

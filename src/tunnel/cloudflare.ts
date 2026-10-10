@@ -1,6 +1,7 @@
 import type { Readable } from 'node:stream'
 import { execa } from 'execa'
 import { PeekError } from '../utils/errors.js'
+import { consumeOutputLines } from '../utils/output-lines.js'
 import type { TunnelExit, TunnelProvider, TunnelSession } from './types.js'
 
 const TUNNEL_TIMEOUT_MS = 45_000
@@ -174,10 +175,9 @@ export class CloudflareProvider implements TunnelProvider {
       const watchStream = (stream: Readable): (() => void) => {
         let pending = ''
         const onData = (chunk: Buffer | string): void => {
-          pending += chunk.toString()
-          const lines = pending.split(/[\r\n]+/)
-          pending = lines.pop() ?? ''
-          for (const line of lines) onLine(line)
+          const consumed = consumeOutputLines(pending, chunk.toString())
+          pending = consumed.pending
+          for (const line of consumed.lines) onLine(line)
           if (parseTunnelUrl(pending)) onLine(pending)
         }
         stream.on('data', onData)

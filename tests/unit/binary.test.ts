@@ -70,6 +70,25 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+it('streams a download that arrives in many chunks', async () => {
+  const bytes = Buffer.from('chunked cloudflared payload')
+  const fetcher = vi.fn(async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte))
+        controller.close()
+      },
+    })
+    return new Response(stream, { status: 200 })
+  })
+  const path = await ensureCloudflared({
+    cacheDir: await cache(),
+    asset: fakeAsset(bytes),
+    fetcher,
+  })
+  expect(await readFile(path)).toEqual(bytes)
+})
+
 it('rejects an asset whose checksum is wrong', async () => {
   const bytes = Buffer.from('wrong data')
   const fetcher = vi.fn(async () => new Response(bytes, { status: 200 }))
