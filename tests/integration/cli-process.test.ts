@@ -221,7 +221,12 @@ it.each([
 ] as const)(
   `${signalCoverage}: %s then %s forces cleanup and retains %i`,
   async (firstSignal, secondSignal, code) => {
-    const cli = await startCli({ providerMode: 'disconnect-on-force' })
+    // The shutdown budgets sum to 10s (tunnel 5s + 1s, dev 3s + 1s), so the
+    // 10s default exit wait has no headroom on a slow CI runner.
+    const cli = await startCli({
+      providerMode: 'disconnect-on-force',
+      timeoutMs: 15_000,
+    })
     handles.push(cli)
     await assertHttp(await cli.waitForEvent('ready'))
     const transport = transportListener(await cli.readJournal())
@@ -247,6 +252,7 @@ it.each([
     await cli.assertResourcesStopped()
     expect(cli.stderr).toBe('')
   },
+  20_000,
 )
 
 it('fails when the dev server exits after readiness and closes its transport without reconnecting', async () => {
