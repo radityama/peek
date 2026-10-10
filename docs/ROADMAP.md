@@ -67,19 +67,25 @@ Never tunnel an unverified service.
 
 ## v0.3 — Local proxy and safe sharing
 
+Status: **Released**
+
 Theme: public should not mean unprotected.
 
 **Foundation: a local reverse proxy.** Peek runs a small proxy between the tunnel and the dev server. Password protection, expiry enforcement, request inspection (v0.4), and header redaction all build on it. It is provider-independent by design, since Quick Tunnels have no auth of their own.
 
-- `--password` with interactive secret input (avoid shell history)
+- `--password` with interactive secret input (avoid shell history) and HTTP
+  Basic authentication at the proxy
+- Failed-authentication throttling and browser WebSocket `Origin` validation
 - `--expires 30m` / `--expires 2h` with automatic teardown
 - `--public` / `--private` with a consistent high-level model
 - Access modes: `private`, `protected`, `public`
+- Port-ownership rechecks on every proxied request
+- Deterministic shutdown with actionable cleanup diagnostics
 - Security state always visible in terminal output:
 
 ```
 PUBLIC PREVIEW      Anyone with this URL can access the service.
-PROTECTED PREVIEW   Authentication is required.
+PROTECTED PREVIEW   A password is required.
 ```
 
 ## v0.4 — Preview inspector and multi-service

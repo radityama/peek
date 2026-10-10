@@ -1,5 +1,6 @@
 import { createConsola } from 'consola'
 import pc from 'picocolors'
+import type { AccessMode } from '../core/access.js'
 import type { DoctorCheck } from '../core/doctor.js'
 import type { QrMode } from './qr.js'
 import { renderQr } from './qr.js'
@@ -31,6 +32,8 @@ export interface Output {
   childOutput(stream: 'stdout' | 'stderr', text: string): void
   ready(localUrl: string, publicUrl: string): void
   lanReady(url: string): void
+  privateReady(url: string): void
+  access(mode: AccessMode, expiresAt?: string): void
   error(message: string): void
   doctorCheck(check: DoctorCheck): void
 }
@@ -79,6 +82,22 @@ export class TerminalOutput implements Output {
     process.stdout.write(`\nLAN  ${url}\n`)
     renderQr(url, this.qrMode)
     process.stdout.write('\nPress Ctrl+C to stop\n')
+  }
+
+  privateReady(url: string): void {
+    this.success('Local preview ready')
+    process.stdout.write(`\nLocal  ${url}\n\nPress Ctrl+C to stop\n`)
+  }
+
+  access(mode: AccessMode, expiresAt?: string): void {
+    const message =
+      mode === 'protected'
+        ? 'PROTECTED PREVIEW   A password is required.'
+        : mode === 'private'
+          ? 'PRIVATE PREVIEW     No public tunnel is running.'
+          : 'PUBLIC PREVIEW      Anyone with this URL can access the service.'
+    process.stdout.write(`\n${pc.bold(message)}\n`)
+    if (expiresAt) process.stdout.write(`Expires  ${expiresAt}\n`)
   }
 
   updateAvailable(current: string, latest: string): void {

@@ -21,6 +21,10 @@ a shell.
 | `--help` | Show usage without starting a process. |
 | `--version` | Show package version. |
 | `--lan` | Show a LAN URL and QR without starting or downloading a tunnel. The dev server must listen on the LAN address. |
+| `--public` | Explicitly create a public tunnel without Peek authentication. This is also the default. |
+| `--private` | Show a loopback URL without starting a tunnel. Peek does not change the dev server's own bind address. |
+| `--password` | Prompt for a password without echoing it, then protect the tunnel with HTTP Basic authentication. Requires an interactive terminal. |
+| `--expires <duration>` | Stop the preview after its first ready state. Accepts whole seconds (`s`), minutes (`m`), or hours (`h`), up to 24h. |
 | `--json` | Write versioned, newline-delimited JSON events, including child output. No QR or human-readable decoration. See the [JSON event contract](JSON.md). |
 | `--live` | With `peek doctor`, start a temporary tunnel and run preview checks. |
 | `--host-header localhost` | Ask `cloudflared` to send `Host: localhost` to the dev server when it rejects the temporary hostname. |
@@ -28,6 +32,21 @@ a shell.
 Without `--qr` or `--no-qr`, Peek shows a QR code when terminal size permits.
 The HTTPS URL always appears as text. `--qr` cannot force an unusable QR into
 a narrow or noninteractive terminal.
+
+Plain `peek` and `--public` use a public tunnel. `--password` selects protected
+mode; browsers prompt for user `peek` and the password entered in the terminal.
+`--private` starts no tunnel. `--lan` retains its LAN URL behavior and is
+classified as private because no public tunnel runs. Choose only one of
+`--public`, `--private`, `--password`, and `--lan`. `--provider` and
+`--host-header` apply only to tunnel modes. The password is never accepted as
+a command argument. An app's own `Authorization` header cannot pass through a
+protected preview because Peek uses that header. A browser WebSocket upgrade
+must carry an `Origin` matching the active preview URL; a client that sends no
+`Origin` may connect with the correct password. See [security](SECURITY.md).
+
+The expiry countdown begins when the first preview URL is ready. It does not
+restart after a tunnel reconnection. Expiry requests normal shutdown of the
+tunnel, proxy, and dev process and exits with status 0 when cleanup succeeds.
 
 ## Argument and output selection
 
@@ -85,6 +104,9 @@ peek --version
 peek -- npm start
 peek --port 3000 -- node server.js
 peek --lan -- node server.js
+peek --private
+peek --public
+peek --password --expires 2h
 peek --json
 peek --host-header localhost
 peek doctor
@@ -146,6 +168,10 @@ checks and includes causes for failed checks. `--live` also starts a
 preview, checks blocked-host responses and supported HMR upgrades, then stops
 the server and tunnel. A failed HMR check warns; unsupported HMR endpoints
 receive no status claim.
+
+For a normal protected preview, Peek uses the entered credential only for
+public diagnostic probes through its proxy. A successful authenticated HMR
+probe does not verify browser HMR behavior, so Peek reports it as unverified.
 
 When a framework rejects the random Quick Tunnel hostname, Peek prints a
 specific warning. Retry with `peek --host-header localhost`; this changes the

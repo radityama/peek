@@ -49,7 +49,7 @@ entry, provider, transport, fixtures and helpers stay outside the npm package.
 Run the focused CLI checks with:
 
 ```sh
-pnpm exec vitest run tests/integration/cli.test.ts tests/integration/cli-preview.test.ts tests/integration/cli-process.test.ts tests/integration/cli-websocket.test.ts tests/unit/lan.test.ts
+pnpm exec vitest run tests/integration/cli.test.ts tests/integration/cli-preview.test.ts tests/integration/cli-access.test.ts tests/integration/cli-process.test.ts tests/integration/cli-websocket.test.ts tests/unit/lan.test.ts tests/unit/access.test.ts tests/unit/proxy.test.ts tests/unit/secret.test.ts
 ```
 
 These tests run a normal npm dev script, the default terminal output and JSON
@@ -172,7 +172,7 @@ Run the focused contract checks with:
 pnpm exec vitest run tests/unit/json-output.test.ts tests/integration/cli-json.test.ts tests/integration/cli-preview.test.ts tests/integration/cli-process.test.ts
 ~~~
 
-The independent wire assertions cover all thirteen current event variants,
+The independent wire assertions cover current event variants,
 required fields, doctor optional fields/statuses, UTC timestamps, help/version
 timestamp omissions, escaped chunks, malformed records and newline framing.
 Real CLI tests keep stdout and stderr separate for help, version, misuse,
@@ -202,6 +202,24 @@ URL from a second device or `curl`, and press Ctrl+C. Check that the dev server
 and `cloudflared` have exited. The first run downloads the pinned binary to
 `~/.peek/bin`; subsequent runs reuse it. Do not share a project containing
 private data unless its HTTP routes protect that data.
+
+### Live verification record
+
+A run on 2026-10-10 exercised a real Quick Tunnel for tunnel startup, HTTPS
+delivery, protected authentication, WebSocket and HMR-style traffic,
+host-header override, reconnect, expiry, and cleanup. See the
+[live verification record](LIVE-VERIFICATION.md) for the checklist, results,
+and the environment limits that left the real-browser scenario unrun.
+Reproduce it from a host whose resolver returns the Quick Tunnel wildcard with
+the pinned binary already cached.
+
+### Benchmarks
+
+`tests/bench/binary.bench.ts` measures first-download peak RSS and elapsed
+time. Run it with
+`PEEK_BENCHMARK_OUTPUT=/tmp/peek-binary-bench.jsonl pnpm exec vitest bench tests/bench/binary.bench.ts`.
+`tests/bench/preview.bench.ts` measures proxy request latency. Recorded results
+are in `docs/benchmarks/`.
 
 You can also run the existing opt-in checks from a disposable dev project:
 

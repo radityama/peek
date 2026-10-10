@@ -29,6 +29,11 @@ try {
     process.stdout.write('fixture non-JSON stdout\n')
   await runCli(process.argv.slice(2), {
     prepareProvider: async (options) => prepareFixtureProvider(options),
+    readPassword: async () => {
+      if (process.env.PEEK_TEST_PASSWORD === undefined)
+        throw new Error('Fixture password was not supplied')
+      return process.env.PEEK_TEST_PASSWORD
+    },
     run: (options) => {
       const retryMs = process.env.PEEK_TEST_RETRY_MS
       return runPeek({

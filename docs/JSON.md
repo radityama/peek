@@ -32,6 +32,8 @@ Optional payload fields are absent when not supplied. Absence is not null.
 | `child-output` | `stream: 'stdout' \| 'stderr'`, `content: string` | None |
 | `ready` | `localUrl: string`, `publicUrl: string` | None |
 | `lan-ready` | `url: string` | None |
+| `private-ready` | `url: string` | None |
+| `access` | `mode: 'private' \| 'protected' \| 'public'` | `expiresAt: string` |
 | `error` | `message: string` | None |
 | `doctor-check` | `name: string`, `status: 'pass' \| 'warn' \| 'fail'`, `message: string` | `remedy: string`, `detail: string` |
 | `help` | `text: string` | None |
@@ -47,6 +49,14 @@ URLs are absolute strings. Cloudflare public URLs use HTTPS, local URLs use
 `http://localhost:<port>`, and LAN URLs use the selected private IPv4 address.
 Test providers can use loopback HTTP. A `ready` URL may change on reconnect;
 do not infer a provider or fixed hostname from it.
+
+An `access` event follows each ready event. `private` means Peek has no public
+tunnel, `protected` means its loopback proxy requires a password, and `public`
+means the tunnel has no Peek authentication. `expiresAt` is UTC and appears
+only with `--expires`; its value remains fixed across reconnects.
+`private-ready` reports the local URL for `--private`. A `lan-ready` event also
+has `mode: private` in its subsequent `access` event. These additive events
+keep schema version 1.
 
 `child-output.content` preserves each received chunk, including newlines,
 quotes and Unicode. A chunk is not necessarily a complete log line. The
@@ -118,6 +128,4 @@ for await (const line of createInterface({ input: process.stdin })) {
 }
 ~~~
 
-The consumer ignores other events and additional fields. Future optional
-fields such as `access` or `expiresAt` can follow this policy; no such field
-or behavior is implemented by this hardening pass.
+The consumer ignores other events and additional fields.

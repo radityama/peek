@@ -50,5 +50,21 @@ export function formatError(error: unknown, verbose = false): string {
 }
 
 function formatCause(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause)
+  if (cause instanceof AggregateError) {
+    const details = [
+      ...new Set(cause.errors.map((error) => formatCause(error))),
+    ].filter((detail) => detail.length > 0)
+    return details.length > 0 ? details.join('; ') : cause.message
+  }
+  if (cause instanceof Error) {
+    // A cleanup failure wraps the real reason in a chain of PeekErrors. Follow
+    // the chain so verbose output names the resource that failed to stop.
+    if (cause.cause !== undefined) {
+      const detail = formatCause(cause.cause)
+      if (detail.length > 0 && detail !== cause.message)
+        return `${cause.message}: ${detail}`
+    }
+    return cause.message
+  }
+  return String(cause)
 }

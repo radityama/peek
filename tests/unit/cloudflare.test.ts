@@ -139,6 +139,22 @@ it('waits for a valid public URL on stderr', async () => {
   await expect(connection.exited).resolves.toEqual({ exitCode: 0 })
 })
 
+it('recognizes a public URL split across output chunks', async () => {
+  const fake = fakeChild()
+  const provider = new CloudflareProvider('/tmp/cloudflared', () => fake.child)
+  const connecting = provider.connect({
+    target: new URL('http://127.0.0.1:3000'),
+    signal: new AbortController().signal,
+  })
+  fake.stderr.write('https://rapid-riv')
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  fake.stderr.write('er.trycloudflare.com\n')
+  const connection = await connecting
+  expect(connection.url).toBe('https://rapid-river.trycloudflare.com')
+  fake.exit(0)
+  await provider.disconnect()
+})
+
 it('passes an explicit localhost Host header to cloudflared', async () => {
   const fake = fakeChild()
   const launch = vi.fn(() => fake.child)

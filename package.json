@@ -1,6 +1,6 @@
 {
   "name": "@usepeek/peek",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Run your dev server. Share it instantly.",
   "repository": {
     "type": "git",

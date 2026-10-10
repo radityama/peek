@@ -1,6 +1,6 @@
 # Decisions
 
-These lightweight records explain choices made across v0.1 and v0.2. Revisit them when
+These lightweight records explain choices made across v0.1, v0.2, and v0.3. Revisit them when
 evidence changes, while preserving the product and security invariants in
 `AGENTS.md`.
 
@@ -115,3 +115,42 @@ one. Ctrl+C and a dev-server exit still stop the entire lifecycle.
 **Why:** Restarting a dev server can change its port and process tree. Keeping
 it alive preserves the selected service and makes temporary network failures
 recoverable without weakening port verification.
+
+## 12. Loopback proxy for v0.3 access control
+
+**Decision:** Public and protected Quick Tunnels target a Peek HTTP/WebSocket
+proxy bound to loopback. The proxy has one fixed, verified dev target and checks
+its ownership before connecting a tunnel. Concurrent requests share one
+inspection, and successful ownership evidence is reused for at most one
+second. Process exit and shutdown invalidate the result. It removes the Peek Basic auth
+header in protected mode. Lifecycle closes the tunnel, proxy, then dev tree.
+
+**Why:** Quick Tunnels cannot enforce a Peek password. Keeping access control
+at the local origin makes the behavior independent of the tunnel provider and
+allows cleanup and port verification to stay in one lifecycle.
+
+## 13. Bounded output buffers and streamed binary verification
+
+**Decision:** One `consumeOutputLines` helper splits child output into complete
+lines and bounds only the unterminated tail to 8 KiB. The `cloudflared` asset
+streams to its temporary file through a size-checking, hashing transform, and
+cached binaries are rehashed incrementally from a read stream.
+
+**Why:** The dev server and tunnel are untrusted output sources; a stream that
+never emits a newline previously grew an in-memory string without limit. The
+first download previously joined the whole asset in memory and re-read cached
+binaries whole. Streaming keeps peak memory independent of asset size without
+weakening the size limit, digest verification, or redirect checks.
+
+## 14. WebSocket `Origin` validation and failed-auth throttling
+
+**Decision:** Protected mode validates a browser WebSocket `Origin` against the
+active preview URL and throttles failed authentication with a shared token
+bucket (burst 12, one refill every five seconds). Requests without an `Origin`
+header are allowed with valid credentials.
+
+**Why:** HTTP Basic credentials can be replayed from a malicious page if the
+WebSocket handshake is accepted cross-site. Matching `Origin` blocks that path
+without breaking non-browser clients. Bucketing slows password guessing without
+locking out correct credentials; the bucket is shared because `cloudflared`
+connects locally and forwarded client-IP headers cannot be trusted.

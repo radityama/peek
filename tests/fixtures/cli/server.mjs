@@ -29,6 +29,7 @@ const server = createServer((request, response) => {
       'x-fixture-method': request.method,
       'x-fixture-header': request.headers['x-fixture-header'] ?? '',
       'x-fixture-path': request.url,
+      'x-fixture-authorization': request.headers.authorization ?? '',
     })
     request.pipe(response)
   } else response.end('peek fixture')
@@ -40,6 +41,10 @@ server.on('connection', (socket) => {
   socket.on('error', () => {})
 })
 server.on('upgrade', (request, socket, head) => {
+  if (request.headers.authorization) {
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+    return
+  }
   const key = request.headers['sec-websocket-key']
   if (
     request.method !== 'GET' ||

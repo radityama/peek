@@ -67,11 +67,13 @@ async function assertPreview(cli: CliHandle): Promise<string> {
   ).toBe(selectedPort)
   const connections = records.filter((record) => record.role === 'connection')
   expect(connections).toHaveLength(1)
-  expect(connections[0]?.targetPort).toBe(selectedPort)
-  expect(connections[0]?.targetUrl).toBe(`http://127.0.0.1:${selectedPort}/`)
+  const proxyPort = connections[0]?.targetPort
+  expect(proxyPort).toBeTypeOf('number')
+  expect(proxyPort).not.toBe(selectedPort)
+  expect(connections[0]?.targetUrl).toBe(`http://127.0.0.1:${proxyPort}/`)
   const transports = records.filter((record) => record.role === 'transport')
   expect(transports.length).toBeGreaterThan(0)
-  expect(transports.every((record) => record.targetPort === selectedPort)).toBe(
+  expect(transports.every((record) => record.targetPort === proxyPort)).toBe(
     true,
   )
   return String(ready.publicUrl)
@@ -89,11 +91,14 @@ it('shows and serves the default terminal preview with no CLI flags', async () =
   handles.push(cli)
   const publicUrl = (): string | undefined =>
     cli.stdout.match(/^Public\s+(http:\/\/127\.0\.0\.1:\d+)\s*$/m)?.[1]
-  // The URL block and stop hint can arrive in separate stdout chunks.
+  // The access banner is written after the stop hint, so wait on the line the
+  // assertion depends on instead of the earlier hint.
   await expect
     .poll(() => cli.stdout, { timeout: 12_000 })
-    .toContain('Press Ctrl+C to stop')
+    .toContain('PUBLIC PREVIEW')
+  expect(cli.stdout).toContain('Press Ctrl+C to stop')
   expect(publicUrl()).toBeDefined()
+  expect(cli.stdout).toContain('PUBLIC PREVIEW')
   const url = new URL(publicUrl() ?? '')
   expect(
     await (await fetch(url, { signal: AbortSignal.timeout(3000) })).text(),
@@ -190,6 +195,40 @@ it('reports a real forwarded Host rejection without an HMR failure', async () =>
   await stop(cli)
   expect(cli.events.some((event) => event.kind === 'hmr-failed')).toBe(false)
   expect(cli.stderr).toBe('')
+})
+
+it('reports a blocked Host through a protected preview', async () => {
+  const cli = await startCli({
+    args: ['--json', '--password'],
+    env: { PEEK_TEST_PASSWORD: 'preview diagnostic secret' },
+    mode: 'blocked-host',
+    framework: 'vite',
+  })
+  handles.push(cli)
+  await cli.waitForEvent('ready')
+  const warning = await cli.waitForEvent(
+    'warning',
+    (event) => event.kind === 'blocked-host',
+  )
+  expect(warning.message).toContain('--host-header localhost')
+  expect(cli.stdout).not.toContain('preview diagnostic secret')
+  await stop(cli)
+})
+
+it('marks a protected Vite HMR probe as browser-unverified', async () => {
+  const cli = await startCli({
+    args: ['--json', '--password'],
+    env: { PEEK_TEST_PASSWORD: 'hmr diagnostic secret' },
+    framework: 'vite',
+  })
+  handles.push(cli)
+  await cli.waitForEvent('ready')
+  const notice = await cli.waitForEvent('info', (event) =>
+    String(event.message).includes('browser HMR credentials'),
+  )
+  expect(notice.message).toContain('browser HMR credentials')
+  expect(cli.stdout).not.toContain('hmr diagnostic secret')
+  await stop(cli)
 })
 
 it('passes the existing localhost Host override to the real transport', async () => {

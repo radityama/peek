@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { TunnelProvider } from '../tunnel/types.js'
 import { PeekError } from '../utils/errors.js'
+import type { AccessMode } from './access.js'
 import type { DevCommand } from './dev-command.js'
 import type { Framework } from './framework.js'
 import { selectLanAddress } from './lan.js'
@@ -12,6 +13,7 @@ import {
   type ProcessExit,
   spawnDev,
 } from './process.js'
+import { startPreviewProxy } from './proxy.js'
 import { TunnelRecovery } from './reconnect.js'
 import {
   captureBaselinePorts,
@@ -20,6 +22,7 @@ import {
   verifySelectedServer,
   waitForServer,
 } from './server.js'
+import { coordinateVerification } from './verification.js'
 
 export interface RunOptions {
   cwd: string
@@ -28,6 +31,11 @@ export interface RunOptions {
   lifecycle: Lifecycle
   provider?: TunnelProvider
   lan?: boolean
+  privateMode?: boolean
+  accessMode?: AccessMode
+  password?: string
+  expiresMs?: number
+  originHostHeader?: 'localhost'
   lanAddressSelector?: (port: number, signal: AbortSignal) => Promise<string>
   onState?: (
     state: 'starting' | 'waiting' | 'connecting' | 'reconnecting',
@@ -36,6 +44,9 @@ export interface RunOptions {
   onServerReady?: (port: number) => void
   onReady?: (urls: { localUrl: string; publicUrl: string }) => void
   onLanReady?: (url: string) => void
+  onPrivateReady?: (url: string) => void
+  onAccess?: (mode: AccessMode, expiresAt?: string) => void
+  onExpired?: () => void
   framework?: Framework
   onPreviewFinding?: (finding: PreviewFinding) => void
   onPreviewCheckComplete?: () => void
@@ -86,8 +97,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
   const { cwd, command, explicitPort, lifecycle, provider } = options
   const signal = lifecycle.signal
   let previewController: AbortController | undefined
+  let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let expiresAt: string | undefined
   let disposeDevOutput: (() => void) | undefined
   let primary: { error: unknown } | undefined
+  let expiryFailure: { error: unknown } | undefined
   try {
     if (provider) await lifecycle.setProvider(provider)
     signal.throwIfAborted()
@@ -170,12 +184,17 @@ export async function runPeek(options: RunOptions): Promise<void> {
     lifecycle.advance('server-ready')
     options.onServerReady?.(port)
     signal.throwIfAborted()
-    // The port is fixed for the preview, so every later connect re-proves that
-    // the same dev process still owns it. Verification failure is terminal and
-    // must not be counted as a recoverable provider failure.
-    const recheckListener = async (): Promise<void> => {
+    // The port stays fixed. Concurrent traffic shares one inspection, and a
+    // successful result is valid for at most one second. Process exit and
+    // shutdown always override cached evidence.
+    const inspectSelectedListener = coordinateVerification(() =>
+      verifySelectedServer(dev.pid, port, signal),
+    )
+    const recheckListener = async (fresh = false): Promise<void> => {
+      signal.throwIfAborted()
+      if (devExited) throw serverExit(devExit ?? (await dev.exit))
       const verified = await waitForOutcome(
-        verifySelectedServer(dev.pid, port, signal),
+        inspectSelectedListener(fresh),
         dev.exit,
         signal,
       )
@@ -184,6 +203,22 @@ export async function runPeek(options: RunOptions): Promise<void> {
         return
       }
       if (verified.kind === 'dev') throw serverExit(verified.exit)
+      if (devExited) throw serverExit(devExit ?? (await dev.exit))
+    }
+    const reportAccess = (): void => {
+      if (options.expiresMs !== undefined && expiresAt === undefined) {
+        expiresAt = new Date(Date.now() + options.expiresMs).toISOString()
+        expiryTimer = setTimeout(() => {
+          if (signal.aborted) return
+          try {
+            options.onExpired?.()
+          } catch (error) {
+            expiryFailure = { error }
+          }
+          if (!signal.aborted) lifecycle.requestStop()
+        }, options.expiresMs)
+      }
+      options.onAccess?.(options.accessMode ?? 'public', expiresAt)
     }
     if (options.lan) {
       const address = await (options.lanAddressSelector ?? selectLanAddress)(
@@ -191,9 +226,24 @@ export async function runPeek(options: RunOptions): Promise<void> {
         signal,
       )
       signal.throwIfAborted()
-      await recheckListener()
+      await recheckListener(true)
       lifecycle.advance('ready')
       options.onLanReady?.(`http://${address}:${port}`)
+      reportAccess()
+      signal.throwIfAborted()
+      const outcome = await waitForOutcome(
+        new Promise<never>(() => {}),
+        dev.exit,
+        signal,
+      )
+      if (outcome.kind === 'dev') throw serverExit(outcome.exit)
+      return
+    }
+    if (options.privateMode) {
+      await recheckListener(true)
+      lifecycle.advance('ready')
+      options.onPrivateReady?.(`http://localhost:${port}`)
+      reportAccess()
       signal.throwIfAborted()
       const outcome = await waitForOutcome(
         new Promise<never>(() => {}),
@@ -205,6 +255,18 @@ export async function runPeek(options: RunOptions): Promise<void> {
     }
     if (!provider)
       throw new Error('Tunnel provider is required outside LAN mode')
+    let currentPublicOrigin: string | undefined
+    const proxy = await startPreviewProxy({
+      targetPort: port,
+      verifyTarget: recheckListener,
+      publicOrigin: () => currentPublicOrigin,
+      ...(options.password === undefined ? {} : { password: options.password }),
+      ...(options.originHostHeader === undefined
+        ? {}
+        : { originHostHeader: options.originHostHeader }),
+    })
+    await lifecycle.setProxy(proxy)
+    signal.throwIfAborted()
     lifecycle.advance('tunnel-connecting')
     options.onState?.('connecting')
     signal.throwIfAborted()
@@ -216,6 +278,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
         localUrl,
         publicUrl: connection.url,
       })
+      reportAccess()
       signal.throwIfAborted()
       if (options.framework) {
         previewController?.abort()
@@ -229,6 +292,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
           connection.url,
           options.framework,
           previewSignal,
+          options.password === undefined
+            ? {}
+            : {
+                authorization: `Basic ${Buffer.from(`peek:${options.password}`).toString('base64')}`,
+              },
         ).then(
           (findings) => {
             if (previewSignal.aborted) return
@@ -272,11 +340,11 @@ export async function runPeek(options: RunOptions): Promise<void> {
         if (disconnected.kind === 'cancel') return
         if (disconnected.kind === 'dev') throw serverExit(disconnected.exit)
         signal.throwIfAborted()
-        await recheckListener()
+        await recheckListener(true)
         try {
           const connected = await waitForOutcome(
             provider.connect({
-              target: new URL(`http://127.0.0.1:${port}`),
+              target: new URL(`http://127.0.0.1:${proxy.port}`),
               signal,
             }),
             dev.exit,
@@ -286,6 +354,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
           if (connected.kind === 'dev') throw serverExit(connected.exit)
           signal.throwIfAborted()
           connection = connected.value
+          currentPublicOrigin = new URL(connection.url).origin
           connectedAt = now()
         } catch (error) {
           if (
@@ -320,6 +389,7 @@ export async function runPeek(options: RunOptions): Promise<void> {
       options.onState?.('reconnecting')
       signal.throwIfAborted()
       recovery.dropped(sessionDurationMs)
+      currentPublicOrigin = undefined
       connection = undefined
     }
   } catch (error) {
@@ -336,6 +406,8 @@ export async function runPeek(options: RunOptions): Promise<void> {
       primary = { error }
     }
   } finally {
+    if (expiryFailure && !primary) primary = expiryFailure
+    if (expiryTimer) clearTimeout(expiryTimer)
     disposeDevOutput?.()
     previewController?.abort()
     const cleanup = await lifecycle.stop(

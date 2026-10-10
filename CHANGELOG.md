@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 — 2026-10-10
+
+- Route public tunnel traffic through a loopback proxy that rechecks ownership
+  of the selected dev port before forwarding HTTP and WebSocket requests.
+- Preserve HTTP framing and reject unsupported WebSocket upgrades with a
+  complete response instead of a half-written handshake.
+- Add `--password` with hidden terminal input and HTTP Basic authentication at
+  the proxy. Peek removes the credential before requests reach the app.
+- Throttle repeated failed authentication and validate the browser WebSocket
+  `Origin` against the active preview URL.
+- Add `--private` for previews without a public tunnel, explicit `--public`,
+  and `--expires` for automatic teardown after first readiness.
+- Show access mode and expiry in terminal output and JSON events.
+- Explain why a preview is unreachable, including protected-preview and
+  HMR/WebSocket diagnostics.
+- Make shutdown deterministic and report the concrete reason when cleanup
+  cannot confirm every descendant exited.
+- Bound dev-server and tunnel output buffering, and stream the cached
+  `cloudflared` download and checksum verification to lower peak memory on a
+  first run.
+
 ## 0.2.2 — 2026-09-29
 
 - Publish Peek under the canonical npm package `@usepeek/peek` while keeping
