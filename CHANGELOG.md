@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — Unreleased
+## 0.3.0 — 2026-10-10
 
 - Route public tunnel traffic through a loopback proxy that rechecks ownership
   of the selected dev port before forwarding HTTP and WebSocket requests.

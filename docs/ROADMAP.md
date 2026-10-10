@@ -67,7 +67,7 @@ Never tunnel an unverified service.
 
 ## v0.3 — Local proxy and safe sharing
 
-Status: **Unreleased**
+Status: **Released**
 
 Theme: public should not mean unprotected.
 
