@@ -11,9 +11,12 @@ protected when it contains sensitive data or unsafe development endpoints.
 Peek runs one user-selected dev command and one Cloudflare Quick Tunnel as the
 current user in public and protected modes. The tunnel origin is a Peek proxy
 bound to `127.0.0.1` on an ephemeral port. That proxy forwards to exactly the
-selected, verified dev port and rechecks its ownership before each HTTP or
-WebSocket request. If verification fails, the proxy responds with 502. A
-listener can still change after a check; this is a local timing limit. Peek
+selected, verified dev port and checks its ownership before tunnel connection.
+The proxy shares one inspection among concurrent requests and reuses a
+successful result for at most one second. Process exit and shutdown stop
+forwarding even if that result was cached. If verification fails, the proxy
+responds with 502. A listener can still change during the one-second window
+or immediately after a check; this is a local timing limit. Peek
 rejects an explicit port occupied before startup. It does not expose a range
 of ports, a filesystem directory, or an arbitrary network interface. If the
 selected app exposes secrets or source files through HTTP, remote visitors

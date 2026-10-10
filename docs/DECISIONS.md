@@ -120,7 +120,9 @@ recoverable without weakening port verification.
 
 **Decision:** Public and protected Quick Tunnels target a Peek HTTP/WebSocket
 proxy bound to loopback. The proxy has one fixed, verified dev target and checks
-its ownership before forwarding each request. It removes the Peek Basic auth
+its ownership before connecting a tunnel. Concurrent requests share one
+inspection, and successful ownership evidence is reused for at most one
+second. Process exit and shutdown invalidate the result. It removes the Peek Basic auth
 header in protected mode. Lifecycle closes the tunnel, proxy, then dev tree.
 
 **Why:** Quick Tunnels cannot enforce a Peek password. Keeping access control
