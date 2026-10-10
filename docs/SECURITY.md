@@ -46,7 +46,10 @@ the correct password; `Origin` is a browser protection, not an identity check.
 HTTP Basic credentials may not be sent by every browser or framework HMR
 client on a WebSocket handshake. If HMR does not authenticate, use an
 unprotected preview only for content safe to share, or test through local
-access. This browser behavior still needs live Cloudflare validation.
+access. A live tunnel run verified that an HTTP client can complete an
+authenticated WebSocket upgrade and that missing credentials and mismatched
+origins are rejected; a real-browser HMR handshake was not validated in that
+environment. See the [live verification record](LIVE-VERIFICATION.md).
 
 The dev server's direct port remains reachable locally and may be reachable
 on the LAN if the dev command binds an external interface; Peek's password

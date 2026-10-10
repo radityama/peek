@@ -36,12 +36,15 @@ flowchart TD
 | `src/core/access.ts` | Resolve access flags and parse expiry durations. |
 | `src/core/secret.ts` | Read a password from an interactive terminal without echo. |
 | `src/core/proxy.ts` | Authenticate and forward HTTP/WebSocket traffic to one fixed dev port. |
+| `src/core/proxy-auth.ts` | Constant-time Basic-auth comparison, failed-attempt throttle, and WebSocket `Origin` validation. |
 | `src/core/preview-checks.ts` | Probe public host rejection and eligible HMR upgrades. |
 | `src/core/dev-command.ts` | Build safe executable/argument arrays. |
 | `src/core/process.ts` | Spawn and observe the dev process with Execa. |
 | `src/core/port.ts` | Parse local output signals and probe loopback TCP. |
 | `src/core/server.ts` | Reconcile output, child listeners, and newly opened common ports. |
+| `src/core/verification.ts` | Single-flight port-ownership evidence shared by concurrent proxy requests for at most one second. |
 | `src/core/run.ts` | Order startup, hold a LAN preview, and reconnect a dropped tunnel. |
+| `src/core/reconnect.ts` | Eight-event recovery budget and capped abortable backoff delays. |
 | `src/core/lifecycle.ts` | Checked phases, shutdown outcome, resource ownership, and signals. |
 | `src/core/cleanup.ts` | Bounded provider and dev cleanup with forced termination and error results. |
 | `src/cloudflared/*` | Fixed release mapping, download, checksum, and cache. |
@@ -52,17 +55,22 @@ flowchart TD
 | `src/ui/json-event.ts` | Type the current JSON payloads and own metadata/framing for runtime, help and version events. |
 | `src/update/*` | Best-effort npm version check, user-level 24-hour cache, and notification timing; no dependency from the preview core. |
 | `src/utils/errors.ts` | Actionable error categories and formatting. |
+| `src/utils/output-lines.ts` | Split child output into lines and bound the unterminated tail. |
 
 ## Execution lifecycle
 
 1. Parse flags, inspect the current project, and select an argv array. An
    explicit command after `--` bypasses project inspection.
 2. In public or protected mode, the tunnel preparation factory verifies or downloads the
-   pinned `cloudflared` binary before starting the dev server. Register the
-   prepared provider for cleanup. Private and LAN modes skip the tunnel engine.
+   pinned `cloudflared` binary before starting the dev server. Downloads stream
+   to a temporary file through a size-checking, hashing transform, and cached
+   binaries are rehashed incrementally, so peak memory does not scale with the
+   asset size. Register the prepared provider for cleanup. Private and LAN
+   modes skip the tunnel engine.
 3. Snapshot common ports and an explicit `--port`, then spawn the dev command
    without a shell. Stream both output channels to the terminal and port
-   detector.
+   detector. Unterminated output is bounded, so a stream that never emits a
+   newline cannot grow memory without limit.
 4. Select one candidate port. `--port` wins. Otherwise, emitted local URLs,
    process-owned listeners, and newly opened common ports provide evidence.
    TCP readiness is checked at `127.0.0.1`. Conflicts fail closed.
