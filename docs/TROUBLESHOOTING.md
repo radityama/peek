@@ -22,6 +22,10 @@ stdout and stderr are already shown in normal mode.
 | Cloudflare tunnel fails | Check internet access and `peek --verbose`. A `~/.cloudflared/config.yaml` may prevent Quick Tunnels; move it temporarily if appropriate, then retry. Peek does not edit it. |
 | Dev server rejects the tunnel hostname | Retry with `peek --host-header localhost`. The origin will see `Host: localhost`, so check apps that generate absolute URLs from the Host header. |
 | Protected Vite HMR is unverified | Peek can test an authenticated WebSocket through the tunnel, but that does not prove the browser sends Basic credentials on its HMR socket. Open the preview in a browser and confirm edits update; inspect the browser's Network WebSocket entry if they do not. |
+| Public URL shows a Cloudflare error just after start | Wait a few seconds and retry. Cloudflare edge routing for a new Quick Tunnel name can lag behind the URL Peek prints. This is propagation, not a missing local server. |
+| Protected preview returns 401 | Enter user `peek` and the password from the terminal prompt. Peek strips that `Authorization` header before forwarding, so an app that needs its own `Authorization` header will not see one through a protected preview. |
+| Protected WebSocket returns 403 | The browser `Origin` did not match the active preview URL. Reload the preview from the current printed URL, especially after a reconnect changed it. |
+| Preview stops by itself | `--expires` reached its deadline. Start again without it, or pass a longer duration. |
 | Network or firewall blocks the tunnel | Permit the network connections required by `cloudflared`, use a different network, or try `--lan` on the same Wi-Fi. |
 | QR code is missing | Confirm stdout is a TTY and the terminal is wide and tall enough. The public URL is always printed as text. |
 | Windows child remains after exit | Close the process from Task Manager or `taskkill /T /F /PID <pid>`, then report the exact command and Windows version. Execa uses Windows process-tree termination when available. |

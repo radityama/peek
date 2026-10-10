@@ -40,7 +40,9 @@ classified as private because no public tunnel runs. Choose only one of
 `--public`, `--private`, `--password`, and `--lan`. `--provider` and
 `--host-header` apply only to tunnel modes. The password is never accepted as
 a command argument. An app's own `Authorization` header cannot pass through a
-protected preview because Peek uses that header. See [security](SECURITY.md).
+protected preview because Peek uses that header. A browser WebSocket upgrade
+must carry an `Origin` matching the active preview URL; a client that sends no
+`Origin` may connect with the correct password. See [security](SECURITY.md).
 
 The expiry countdown begins when the first preview URL is ready. It does not
 restart after a tunnel reconnection. Expiry requests normal shutdown of the

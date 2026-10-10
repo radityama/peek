@@ -111,10 +111,12 @@ need `--port`.
 **A plain Peek public URL is available to anyone who has it.** Use
 `peek --password` to require HTTP Basic authentication at Peek's local proxy.
 The terminal prompts without echoing; in a browser, enter `peek` as the user
-name and your chosen password. `--private` starts no public tunnel. Peek cannot
-change the dev server's own network bind address, and Cloudflare still carries
-protected tunnel traffic. Peek does not upload source code or collect
-telemetry. Read the [security guide](https://github.com/radityama/peek/blob/main/docs/SECURITY.md)
+name and your chosen password. Peek uses the `Authorization` header for that
+check, so an application that needs its own `Authorization` header cannot
+receive it through a protected preview. `--private` starts no public tunnel.
+Peek cannot change the dev server's own network bind address, and Cloudflare
+still carries protected tunnel traffic. Peek does not upload source code or
+collect telemetry. Read the [security guide](https://github.com/radityama/peek/blob/main/docs/SECURITY.md)
 before sharing a sensitive preview.
 
 Cloudflare says Quick Tunnels are for testing and development, with no uptime
@@ -136,7 +138,8 @@ pnpm build
 See [development](https://github.com/radityama/peek/blob/main/docs/DEVELOPMENT.md)
 for local linking and release checks, and
 [troubleshooting](https://github.com/radityama/peek/blob/main/docs/TROUBLESHOOTING.md)
-if startup fails.
+if startup fails. The v0.3 [live verification record](https://github.com/radityama/peek/blob/main/docs/LIVE-VERIFICATION.md)
+documents the real Quick Tunnel checks and their environment limits.
 
 ## Contributing and support
 

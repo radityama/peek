@@ -203,6 +203,24 @@ and `cloudflared` have exited. The first run downloads the pinned binary to
 `~/.peek/bin`; subsequent runs reuse it. Do not share a project containing
 private data unless its HTTP routes protect that data.
 
+### Live verification record
+
+A run on 2026-10-10 exercised a real Quick Tunnel for tunnel startup, HTTPS
+delivery, protected authentication, WebSocket and HMR-style traffic,
+host-header override, reconnect, expiry, and cleanup. See the
+[live verification record](LIVE-VERIFICATION.md) for the checklist, results,
+and the environment limits that left the real-browser scenario unrun.
+Reproduce it from a host whose resolver returns the Quick Tunnel wildcard with
+the pinned binary already cached.
+
+### Benchmarks
+
+`tests/bench/binary.bench.ts` measures first-download peak RSS and elapsed
+time. Run it with
+`PEEK_BENCHMARK_OUTPUT=/tmp/peek-binary-bench.jsonl pnpm exec vitest bench tests/bench/binary.bench.ts`.
+`tests/bench/preview.bench.ts` measures proxy request latency. Recorded results
+are in `docs/benchmarks/`.
+
 You can also run the existing opt-in checks from a disposable dev project:
 
 ```sh
