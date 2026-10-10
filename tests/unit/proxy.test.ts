@@ -171,6 +171,52 @@ it('removes connection-nominated headers from ordinary HTTP requests and respons
   expect(result.headers['content-length']).toBe('2')
 })
 
+it('streams an origin response before the origin finishes it', async () => {
+  let clientReceivedFirst = false
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/plain' })
+    response.write('first')
+    // Only finish once the client has the first chunk, so a proxy that buffers
+    // the whole body would time out instead of reaching the second write.
+    const timer = setInterval(() => {
+      if (!clientReceivedFirst) return
+      clearInterval(timer)
+      response.write('second')
+      response.end()
+    }, 5)
+    response.on('close', () => clearInterval(timer))
+  })
+  const targetPort = await listen(server)
+  const proxy = await startPreviewProxy({
+    targetPort,
+    verifyTarget: async () => {},
+  })
+  proxies.push(proxy)
+  const body = await new Promise<string>((resolve, reject) => {
+    const request = httpRequest({
+      host: '127.0.0.1',
+      port: proxy.port,
+      path: '/',
+    })
+    request.setTimeout(3000, () =>
+      request.destroy(new Error('Proxy timed out')),
+    )
+    request.on('error', reject)
+    request.on('response', (response) => {
+      let collected = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => {
+        clientReceivedFirst = true
+        collected += chunk
+      })
+      response.on('error', reject)
+      response.on('end', () => resolve(collected))
+    })
+    request.end()
+  })
+  expect(body).toBe('firstsecond')
+})
+
 it('ends a rejected upgrade if the origin terminates its body early', async () => {
   const targetPort = await listen(
     createServer((_request, response) => {
