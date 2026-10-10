@@ -3,6 +3,7 @@ import { readdir, readFile, readlink } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { PeekError } from '../utils/errors.js'
+import { consumeOutputLines } from '../utils/output-lines.js'
 import { COMMON_DEV_PORTS, extractLocalPorts, probePort } from './port.js'
 
 const execFileAsync = promisify(execFile)
@@ -12,9 +13,8 @@ export class PortSignals {
   private pending = ''
 
   addChunk(chunk: string): void {
-    this.pending += chunk
-    const lines = this.pending.split(/[\r\n]+/)
-    this.pending = lines.pop() ?? ''
+    const { lines, pending } = consumeOutputLines(this.pending, chunk)
+    this.pending = pending
     for (const line of lines) this.addLine(line)
   }
 

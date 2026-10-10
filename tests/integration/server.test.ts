@@ -47,6 +47,14 @@ it('selects an output-derived port only when reachable', async () => {
   expect(selected).toBe(port)
 })
 
+it('keeps detecting ports after a long unterminated output line', async () => {
+  const port = await listen()
+  const signals = new PortSignals()
+  signals.addChunk('noise'.repeat(20_000))
+  signals.addChunk(`Local: http://localhost:${port}\n`)
+  expect(signals.getPorts()).toContain(port)
+})
+
 it('rejects an explicit port occupied before startup', async () => {
   const port = await listen()
   await expect(
