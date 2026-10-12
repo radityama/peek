@@ -1,0 +1,26 @@
+@import "tailwindcss";
+@import "@fontsource-variable/host-grotesk";
+@import "@fontsource-variable/azeret-mono";
+@import "./tokens.css";
+@import "./prose.css";
+
+@layer base {
+  * {
+    min-width: 0;
+  }
+  html {
+    color-scheme: light;
+    scrollbar-gutter: stable;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}

@@ -1,0 +1,6 @@
+# pnpm 11 fails installs while any dependency build script is undecided.
+# esbuild and workerd both install a platform binary in their postinstall;
+# without them the website neither builds nor previews locally.
+allowBuilds:
+  esbuild: true
+  workerd: true
