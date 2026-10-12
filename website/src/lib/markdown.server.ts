@@ -33,6 +33,22 @@ const SHIKI_LANGS = [
 ] as const
 
 /**
+ * Every docs page supplies its own `h1`, so a leading `# Title` in the source
+ * would render a second, duplicate one.
+ */
+function stripLeadingTitle(tree: Root): void {
+  const index = tree.children.findIndex((node) => node.type !== 'html')
+  const first = tree.children[index]
+  if (first?.type === 'heading' && first.depth === 1) {
+    tree.children.splice(index, 1)
+  }
+}
+
+function remarkStripLeadingTitle() {
+  return (tree: Root): void => stripLeadingTitle(tree)
+}
+
+/**
  * Renders repository Markdown to HTML. Raw HTML in the source is dropped by
  * remark-rehype (no rehype-raw), so the output only contains nodes this
  * pipeline created.
@@ -44,6 +60,7 @@ export async function renderMarkdown(markdown: string): Promise<string> {
   const file = await unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(remarkStripLeadingTitle)
     .use(remarkRehype)
     .use(rehypeSlug)
     .use(rehypeAutolinkHeadings, {
@@ -63,6 +80,7 @@ export async function renderMarkdown(markdown: string): Promise<string> {
 
 export function extractHeadings(markdown: string): DocumentHeading[] {
   const tree = unified().use(remarkParse).parse(markdown) as Root
+  stripLeadingTitle(tree)
   const slugger = new GithubSlugger()
   const headings: DocumentHeading[] = []
   visit(tree, 'heading', (node: Heading) => {

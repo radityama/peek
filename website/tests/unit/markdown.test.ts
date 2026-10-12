@@ -21,16 +21,31 @@ describe('renderMarkdown', () => {
     const html = await renderMarkdown('```sh\npeek\n```\n')
     expect(html).toContain('shiki')
   })
+
+  it('drops a leading level-1 heading the page already provides', async () => {
+    const html = await renderMarkdown('# CLI\n\n## Install\n')
+    expect(html).not.toContain('<h1')
+    expect(html).toContain('<h2 id="install">')
+  })
+
+  it('keeps a level-1 heading that is not leading', async () => {
+    const html = await renderMarkdown('Intro\n\n# Later\n')
+    expect(html).toContain('<h1 id="later">')
+  })
 })
 
 describe('extractHeadings', () => {
   it('returns depth, text, and slugified id in order', () => {
-    const headings = extractHeadings('# One\n\n## Two words\n\n### Three\n')
+    const headings = extractHeadings('## Two words\n\n### Three\n')
     expect(headings).toEqual([
-      { depth: 1, text: 'One', id: 'one' },
       { depth: 2, text: 'Two words', id: 'two-words' },
       { depth: 3, text: 'Three', id: 'three' },
     ])
+  })
+
+  it('skips a leading level-1 heading so slugs match the rendered page', () => {
+    const headings = extractHeadings('# CLI\n\n## CLI\n')
+    expect(headings).toEqual([{ depth: 2, text: 'CLI', id: 'cli' }])
   })
 
   it('de-duplicates repeated headings like rehype-slug', () => {

@@ -14,8 +14,8 @@ import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as SecurityRouteImport } from './routes/security'
-import { Route as DocsCliRouteImport } from './routes/docs.cli'
-import { Route as DocsTroubleshootingRouteImport } from './routes/docs.troubleshooting'
+import { Route as DocsCliRouteImport } from './routes/docs_.cli'
+import { Route as DocsTroubleshootingRouteImport } from './routes/docs_.troubleshooting'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -43,20 +43,20 @@ const SecurityRoute = SecurityRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsCliRoute = DocsCliRouteImport.update({
-  id: '/cli',
-  path: '/cli',
-  getParentRoute: () => DocsRoute,
+  id: '/docs_/cli',
+  path: '/docs/cli',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const DocsTroubleshootingRoute = DocsTroubleshootingRouteImport.update({
-  id: '/troubleshooting',
-  path: '/troubleshooting',
-  getParentRoute: () => DocsRoute,
+  id: '/docs_/troubleshooting',
+  path: '/docs/troubleshooting',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
-  '/docs': typeof DocsRouteWithChildren
+  '/docs': typeof DocsRoute
   '/features': typeof FeaturesRoute
   '/security': typeof SecurityRoute
   '/docs/cli': typeof DocsCliRoute
@@ -65,7 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
-  '/docs': typeof DocsRouteWithChildren
+  '/docs': typeof DocsRoute
   '/features': typeof FeaturesRoute
   '/security': typeof SecurityRoute
   '/docs/cli': typeof DocsCliRoute
@@ -75,11 +75,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/changelog': typeof ChangelogRoute
-  '/docs': typeof DocsRouteWithChildren
+  '/docs': typeof DocsRoute
   '/features': typeof FeaturesRoute
   '/security': typeof SecurityRoute
-  '/docs/cli': typeof DocsCliRoute
-  '/docs/troubleshooting': typeof DocsTroubleshootingRoute
+  '/docs_/cli': typeof DocsCliRoute
+  '/docs_/troubleshooting': typeof DocsTroubleshootingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,16 +107,18 @@ export interface FileRouteTypes {
     | '/docs'
     | '/features'
     | '/security'
-    | '/docs/cli'
-    | '/docs/troubleshooting'
+    | '/docs_/cli'
+    | '/docs_/troubleshooting'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangelogRoute: typeof ChangelogRoute
-  DocsRoute: typeof DocsRouteWithChildren
+  DocsRoute: typeof DocsRoute
   FeaturesRoute: typeof FeaturesRoute
   SecurityRoute: typeof SecurityRoute
+  DocsCliRoute: typeof DocsCliRoute
+  DocsTroubleshootingRoute: typeof DocsTroubleshootingRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -156,41 +158,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SecurityRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/docs/cli': {
-      id: '/docs/cli'
-      path: '/cli'
+    '/docs_/cli': {
+      id: '/docs_/cli'
+      path: '/docs/cli'
       fullPath: '/docs/cli'
       preLoaderRoute: typeof DocsCliRouteImport
-      parentRoute: typeof DocsRoute
+      parentRoute: typeof rootRouteImport
     }
-    '/docs/troubleshooting': {
-      id: '/docs/troubleshooting'
-      path: '/troubleshooting'
+    '/docs_/troubleshooting': {
+      id: '/docs_/troubleshooting'
+      path: '/docs/troubleshooting'
       fullPath: '/docs/troubleshooting'
       preLoaderRoute: typeof DocsTroubleshootingRouteImport
-      parentRoute: typeof DocsRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface DocsRouteChildren {
-  DocsCliRoute: typeof DocsCliRoute
-  DocsTroubleshootingRoute: typeof DocsTroubleshootingRoute
-}
-
-const DocsRouteChildren: DocsRouteChildren = {
-  DocsCliRoute: DocsCliRoute,
-  DocsTroubleshootingRoute: DocsTroubleshootingRoute,
-}
-
-const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangelogRoute: ChangelogRoute,
-  DocsRoute: DocsRouteWithChildren,
+  DocsRoute: DocsRoute,
   FeaturesRoute: FeaturesRoute,
   SecurityRoute: SecurityRoute,
+  DocsCliRoute: DocsCliRoute,
+  DocsTroubleshootingRoute: DocsTroubleshootingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
