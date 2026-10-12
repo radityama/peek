@@ -227,7 +227,6 @@ export default defineConfig({
   "files": {
     "includes": [
       "**",
-      "!!.output",
       "!!.tanstack",
       "!!.wrangler",
       "!!dist",
@@ -245,7 +244,6 @@ export default defineConfig({
 
 ```gitignore
 node_modules/
-.output/
 .tanstack/
 .wrangler/
 dist/
@@ -448,7 +446,10 @@ Run:
 pnpm -C website install
 pnpm -C website build
 ```
-Expected: install succeeds, build succeeds, `website/.output` exists, and `website/src/routeTree.gen.ts` is generated.
+Expected: install succeeds, build succeeds, `website/dist/client` and
+`website/dist/server` exist, and `website/src/routeTree.gen.ts` is generated.
+Vite emits `dist/{client,server}`, not `.output`; that layout is also what the
+Cloudflare plugin expects in Plan 3.
 
 - [ ] **Step 16: Verify typecheck and lint**
 
@@ -1990,12 +1991,11 @@ git commit -m "feat(website): add hero stage with terminal, path, and device"
 - [ ] **Step 1: Create `website/src/sections/home/OneCommand.tsx`**
 
 ```tsx
-import { Container } from '../../components/Container'
+import { CopyCommand } from '../../components/CopyCommand'
 import { Eyebrow } from '../../components/Eyebrow'
 import { Section } from '../../components/Section'
 import { SectionHeading } from '../../components/SectionHeading'
 import { site } from '../../content/site'
-import { CopyCommand } from '../../components/CopyCommand'
 
 const steps = [
   { title: 'Install once', detail: 'One global install. Peek fetches its own cloudflared.' },
@@ -2402,13 +2402,14 @@ pnpm -C website typecheck
 pnpm -C website lint
 pnpm -C website build
 ```
-Expected: all exit 0; `website/.output` contains prerendered HTML for `/` and every stub route.
+Expected: all exit 0; `website/dist/client` contains prerendered HTML for `/`
+and every stub route.
 
 - [ ] **Step 4: Verify prerendered output contains real content**
 
 Run:
 ```bash
-find website/.output -name '*.html' -print0 | xargs -0 grep -l 'Run it here. Open it anywhere.'
+find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Run it here. Open it anywhere.'
 ```
 Expected: prints the path of the prerendered homepage HTML. (This proves the homepage is static, not client-only.)
 

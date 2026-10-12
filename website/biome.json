@@ -3,7 +3,6 @@
   "files": {
     "includes": [
       "**",
-      "!!.output",
       "!!.tanstack",
       "!!.wrangler",
       "!!dist",

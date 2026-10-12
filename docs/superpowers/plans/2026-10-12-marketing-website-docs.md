@@ -867,7 +867,7 @@ Expected: all exit 0. Confirm the prerendered `docs/cli` HTML contains rendered
 markdown by running:
 
 ```bash
-find website/.output -name '*.html' -print0 | xargs -0 grep -l 'Argument and output selection'
+find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Argument and output selection'
 ```
 
 - [ ] **Step 5: Commit**
@@ -963,7 +963,7 @@ function ChangelogPage() {
 Run:
 ```bash
 pnpm -C website build && pnpm -C website typecheck && pnpm -C website lint
-find website/.output -name '*.html' -print0 | xargs -0 grep -l 'Release history'
+find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Release history'
 ```
 Expected: gate passes; the grep prints the changelog HTML file.
 
@@ -1110,7 +1110,7 @@ function SecurityPage() {
 Run:
 ```bash
 pnpm -C website build && pnpm -C website typecheck && pnpm -C website lint
-find website/.output -name '*.html' -print0 | xargs -0 grep -l 'Threat model'
+find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Threat model'
 ```
 Expected: gate passes; grep prints the security HTML file.
 
@@ -1272,8 +1272,8 @@ function seoAssets(): import('vite').Plugin {
 Run:
 ```bash
 pnpm -C website build
-find website/.output -name 'sitemap.xml' -o -name 'robots.txt' | sort
-find website/.output -name '*.html' | wc -l
+find website/dist/client -name 'sitemap.xml' -o -name 'robots.txt' | sort
+find website/dist/client -name '*.html' | wc -l
 ```
 Expected: `sitemap.xml` and `robots.txt` are emitted; the HTML count is at least
 7 (home, 6 secondary pages) — proving crawl-based prerender reached every route.
@@ -1299,7 +1299,7 @@ git commit -m "feat(website): add 404, sitemap, robots, and full link crawling"
 ## Plan 2 exit criteria
 
 - `pnpm -C website test`, `typecheck`, `lint`, `build` all pass.
-- `website/.output` contains prerendered HTML for `/`, `/features`, `/docs`,
+- `website/dist/client` contains prerendered HTML for `/`, `/features`, `/docs`,
   `/docs/cli`, `/docs/troubleshooting`, `/changelog`, `/security`, plus
   `sitemap.xml` and `robots.txt`.
 - No Markdown parser is present in the client bundle (rendering happens in

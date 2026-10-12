@@ -738,16 +738,16 @@ find website -name 'robots.txt' -not -path '*/node_modules/*'
 find website -name '*.html' -not -path '*/node_modules/*' | wc -l
 ```
 Expected: `sitemap.xml` and `robots.txt` are emitted, and at least 7 HTML files
-are prerendered. The output directory changes from `.output` to the Cloudflare
-plugin's layout; use `find` rather than a hard-coded path so later steps do not
-break.
+are prerendered. The Cloudflare plugin keeps Vite's `dist/{client,server}`
+layout, so prerendered HTML lives under `website/dist/client`; use `find` rather
+than a hard-coded path so later steps do not break.
 
-- [ ] **Step 7: Update the prerender verification commands in the earlier plans**
+- [ ] **Step 7: Confirm the plan verification paths still hold**
 
-Because the output directory moved, any `.output` path in Plan 1 and Plan 2 exit
-criteria should be read as "the prerendered HTML directory produced by the
-current build". Prefer the `find website -name '*.html' -not -path '*/node_modules/*'`
-form.
+Plan 1 and Plan 2 exit criteria reference `website/dist/client`. The Cloudflare
+plugin does not move that directory, so those commands still work. If a future
+plugin version changes the layout, prefer the
+`find website -name '*.html' -not -path '*/node_modules/*'` form.
 
 - [ ] **Step 8: Confirm a local production preview works**
 
