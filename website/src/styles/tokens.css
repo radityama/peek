@@ -20,7 +20,8 @@
   --color-surface: oklch(0.965 0.006 95);
   --color-ink: oklch(0.22 0.008 95);
   --color-ink-2: oklch(0.48 0.01 95);
-  --color-ink-3: oklch(0.62 0.008 95);
+  /* Muted, but AA still applies: 0.62 measured 3.3:1 on --color-surface. */
+  --color-ink-3: oklch(0.53 0.01 95);
   --color-line: oklch(0.89 0.008 95);
   --color-accent: oklch(0.55 0.2 33);
   --color-accent-strong: oklch(0.46 0.19 33);
@@ -30,6 +31,10 @@
   --color-dark-ink: oklch(0.96 0.004 95);
   --color-dark-ink-2: oklch(0.72 0.006 95);
   --color-dark-line: oklch(0.32 0.008 95);
+  /* The light accent and success clear AA on cream but not on the terminal
+     surface, which needs lighter tones of the same hues. */
+  --color-dark-accent: oklch(0.68 0.18 33);
+  --color-dark-success: oklch(0.74 0.16 150);
 
   --container-content: 72rem;
   --container-wide: 88rem;

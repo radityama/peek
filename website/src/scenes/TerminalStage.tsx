@@ -9,7 +9,7 @@ import {
 
 const toneClass = {
   muted: 'text-dark-ink-2',
-  success: 'text-success',
+  success: 'text-dark-success',
 } as const
 
 export function TerminalStage() {
@@ -66,7 +66,7 @@ export function TerminalStage() {
       </div>
       <div className="min-h-[13rem] rounded-lg bg-dark-surface p-4 font-mono text-mono-xs leading-relaxed text-dark-ink">
         <p>
-          <span className="text-accent">$</span> peek
+          <span className="text-dark-accent">$</span> peek
         </p>
         <div aria-live="polite">
           {steps.map((step) => (
@@ -82,7 +82,7 @@ export function TerminalStage() {
               </p>
               <p>
                 <span className="text-dark-ink">Public</span>{' '}
-                <span className="text-accent">
+                <span className="text-dark-accent">
                   https://quiet-harbor-4f2.peek.run
                 </span>
               </p>
