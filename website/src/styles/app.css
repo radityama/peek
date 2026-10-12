@@ -2,6 +2,7 @@
 @import "@fontsource-variable/host-grotesk";
 @import "@fontsource-variable/azeret-mono";
 @import "./tokens.css";
+@import "./prose.css";
 
 @layer base {
   * {
