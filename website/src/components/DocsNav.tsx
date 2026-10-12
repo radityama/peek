@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { docsNav } from '../content/docs'
+import { docsSidebar } from '../content/docs'
 import type { DocumentHeading } from '../lib/headings'
 
 interface DocsNavProps {
@@ -13,7 +13,7 @@ export function DocsNav({ currentHref, headings = [] }: DocsNavProps) {
   return (
     <nav aria-label="Documentation" className="flex flex-col gap-8">
       <ul className="flex flex-col gap-2">
-        {docsNav.map((entry) => {
+        {docsSidebar.map((entry) => {
           const active = entry.href === currentHref
           return (
             <li key={entry.href}>
