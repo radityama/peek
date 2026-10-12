@@ -4,7 +4,7 @@
 
 **Goal:** Give the website a build-time Markdown pipeline and replace every Plan 1 stub route with a real page, ending with a static 404, sitemap, and full link crawling.
 
-**Architecture:** Root repository Markdown (`docs/CLI.md`, `docs/TROUBLESHOOTING.md`, `docs/SECURITY.md`, `CHANGELOG.md`) is imported as raw text at build time and rendered to HTML by Unified (remark → rehype → shiki) inside route loaders. Rendering runs once at prerender, so the client ships no Markdown parser. Pure parsing lives in `src/content` and `src/lib` and is unit-tested.
+**Architecture:** Root repository Markdown (`docs/CLI.md`, `docs/TROUBLESHOOTING.md`, `docs/SECURITY.md`, `CHANGELOG.md`) is imported as raw text at build time and rendered to HTML by Unified (remark → rehype → shiki). Rendering happens in `createServerFn` handlers rather than directly in route loaders, because TanStack Start loaders are isomorphic and would otherwise ship the whole Markdown toolchain to the browser. Rendering runs once at prerender, so the client ships no Markdown parser. Pure parsing lives in `src/content` and `src/lib` and is unit-tested.
 
 **Tech Stack:** Adds `unified`, `remark-parse`, `remark-gfm`, `remark-rehype`, `rehype-slug`, `rehype-autolink-headings`, `rehype-stringify`, `@shikijs/rehype`, `github-slugger`, `mdast-util-to-string`, `unist-util-visit` to the `website/` package from Plan 1.
 
@@ -22,9 +22,12 @@ website/
 ├── src/
 │   ├── content/
 │   │   ├── changelog.ts                  # parseChangelog()
-│   │   └── docs.ts                       # doc manifest + raw imports
+│   │   ├── docs.ts                       # doc manifest + raw imports + docsNav
+│   │   └── sources.server.ts             # raw imports of CHANGELOG.md + SECURITY.md
 │   ├── lib/
-│   │   ├── markdown.ts                   # renderMarkdown(), extractHeadings()
+│   │   ├── headings.ts                   # DocumentHeading type (client-safe)
+│   │   ├── markdown.server.ts            # renderMarkdown(), extractHeadings()
+│   │   ├── docs-render.ts                # createServerFn wrappers
 │   │   └── sitemap.ts                    # sitemapPaths, buildSitemapXml(), buildRobotsTxt()
 │   ├── components/
 │   │   ├── Prose.tsx                     # .prose wrapper
@@ -34,8 +37,8 @@ website/
 │   ├── routes/
 │   │   ├── __root.tsx                    # + notFoundComponent
 │   │   ├── docs.tsx                      # real index (was stub)
-│   │   ├── docs.cli.tsx                  # real page (was stub)
-│   │   ├── docs.troubleshooting.tsx      # real page (was stub)
+│   │   ├── docs_.cli.tsx                 # real page (was stub)
+│   │   ├── docs_.troubleshooting.tsx     # real page (was stub)
 │   │   ├── changelog.tsx                 # real page (was stub)
 │   │   ├── features.tsx                  # real page (was stub)
 │   │   └── security.tsx                  # real page (was stub)
@@ -51,6 +54,42 @@ website/
 `sitemap.xml` and `robots.txt` are emitted at build time by a small Vite plugin
 rather than committed to `public/`, so their absolute URLs always match the
 deployed origin.
+
+---
+
+## Implementation deviations (decided during execution)
+
+These supersede the inline code samples below wherever they conflict. Each was
+forced by something the plan could not know until it ran.
+
+1. **Markdown renders behind `createServerFn`, not in loaders.** TanStack Start
+   loaders run on both the server and the client, so importing the renderer from
+   a loader would ship `unified`, `shiki`, and every remark/rehype plugin in the
+   browser bundle. The renderer therefore lives in
+   `src/lib/markdown.server.ts` (pruned from client builds) and routes call thin
+   `createServerFn` wrappers exported from `src/lib/docs-render.ts`. Read every
+   `import { renderMarkdown } from '../lib/markdown'` below as
+   `import { renderDoc } from '../lib/docs-render'` plus
+   `renderDoc({ data: slug })`. `src/lib/headings.ts` holds the
+   `DocumentHeading` type so client components never import a server module.
+
+2. **The docs routes are siblings, not nested.** Flat-file nesting makes
+   `docs.tsx` a *layout* route the moment `docs.cli.tsx` exists, and prerender
+   then also emits a bare `/docs` that renders an empty `<Outlet/>`. A trailing
+   `_` on the path segment opts out of that nesting (TanStack's documented
+   escape hatch, cf. `posts_.$postId.edit.tsx`), so the two reference pages are
+   `docs_.cli.tsx` and `docs_.troubleshooting.tsx`, each parented to the root
+   route, and `docs.tsx` stays a plain page at `/docs`.
+
+3. **A leading `# Title` is stripped before rendering.** Every docs page already
+   renders its own `h1` from the layout, so an unstripped source heading produced
+   two identical `<h1>`s. `stripLeadingTitle` runs in both `renderMarkdown` and
+   `extractHeadings` so the on-this-page anchors match the rendered slugs.
+
+4. **Prerender verification must ignore dehydrated loader data.** The generated
+   HTML embeds the loader result as JSON, so a plain `grep` for body text passes
+   even when the visible DOM is wrong. Strip `<script>…</script>` before checking
+   (this is exactly how the duplicate-`/docs` bug hid during Task 4).
 
 ---
 
@@ -182,7 +221,7 @@ git commit -m "feat(website): parse the changelog at build time"
 **Files:**
 - Modify: `website/package.json` (add dependencies)
 - Modify: `website/vite.config.ts` (`server.fs.allow`)
-- Create: `website/src/lib/markdown.ts`
+- Create: `website/src/lib/markdown.server.ts` (see deviation 1)
 - Test: `website/tests/unit/markdown.test.ts`
 
 - [ ] **Step 1: Add the markdown dependencies**
@@ -322,7 +361,7 @@ Expected: PASS. If the fenced-code assertion fails, run
 - [ ] **Step 7: Commit**
 
 ```bash
-git add website/package.json website/pnpm-lock.yaml website/vite.config.ts website/src/lib/markdown.ts website/tests/unit/markdown.test.ts
+git add website/package.json website/pnpm-lock.yaml website/vite.config.ts website/src/lib/markdown.server.ts website/tests/unit/markdown.test.ts
 git commit -m "feat(website): render markdown at build time with shiki"
 ```
 
@@ -701,29 +740,26 @@ git commit -m "feat(website): add docs manifest, prose styles, and layout"
 
 **Files:**
 - Modify: `website/src/routes/docs.tsx`
-- Modify: `website/src/routes/docs.cli.tsx`
-- Modify: `website/src/routes/docs.troubleshooting.tsx`
+- Rename: `website/src/routes/docs.cli.tsx` → `website/src/routes/docs_.cli.tsx`
+- Rename: `website/src/routes/docs.troubleshooting.tsx` → `website/src/routes/docs_.troubleshooting.tsx`
 
-- [ ] **Step 1: Replace `website/src/routes/docs.cli.tsx`**
+> The `_` suffix is required: without it `docs.tsx` becomes a layout route and
+> prerender emits a second, empty `/docs`. See deviation 2 above.
+
+- [ ] **Step 1: Replace `website/src/routes/docs_.cli.tsx`**
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
 import { DocLayout } from '../components/DocLayout'
 import { Prose } from '../components/Prose'
 import { TextLink } from '../components/TextLink'
-import { findDoc } from '../content/docs'
-import { extractHeadings, renderMarkdown } from '../lib/markdown'
-
-const doc = findDoc('cli')
+import { renderDoc } from '../lib/docs-render'
 
 export const Route = createFileRoute('/docs/cli')({
   head: () => ({
     meta: [{ title: 'CLI reference — Peek' }],
   }),
-  loader: async () => {
-    const source = doc?.source ?? ''
-    return { html: await renderMarkdown(source), headings: extractHeadings(source) }
-  },
+  loader: () => renderDoc({ data: 'cli' }),
   component: () => {
     const { html, headings } = Route.useLoaderData()
     return (
@@ -753,18 +789,13 @@ import { createFileRoute } from '@tanstack/react-router'
 import { DocLayout } from '../components/DocLayout'
 import { Prose } from '../components/Prose'
 import { findDoc } from '../content/docs'
-import { extractHeadings, renderMarkdown } from '../lib/markdown'
-
-const doc = findDoc('troubleshooting')
+import { renderDoc } from '../lib/docs-render'
 
 export const Route = createFileRoute('/docs/troubleshooting')({
   head: () => ({
     meta: [{ title: 'Troubleshooting — Peek' }],
   }),
-  loader: async () => {
-    const source = doc?.source ?? ''
-    return { html: await renderMarkdown(source), headings: extractHeadings(source) }
-  },
+  loader: () => renderDoc({ data: 'troubleshooting' }),
   component: () => {
     const { html, headings } = Route.useLoaderData()
     return (
@@ -864,16 +895,26 @@ Run:
 pnpm -C website build && pnpm -C website typecheck && pnpm -C website lint
 ```
 Expected: all exit 0. Confirm the prerendered `docs/cli` HTML contains rendered
-markdown by running:
+markdown. The generated HTML also embeds the loader result as JSON, so a bare
+`grep` passes even when the visible DOM is wrong. Strip `<script>` blocks first:
 
 ```bash
-find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Argument and output selection'
+node -e 'const h=require("fs").readFileSync("website/dist/client/docs/cli/index.html","utf8").replace(/<script[\s\S]*?<\/script>/g,""); for (const n of ["aria-label=\"Documentation\"","Argument and output selection","class=\"shiki"]) if(!h.includes(n)) throw new Error("missing "+n); console.log("prerender ok")'
 ```
+
+Also confirm the crawler emitted exactly one `/docs` page — a nested `docs.tsx`
+layout adds a second, empty one:
+
+```bash
+find website/dist/client -name '*.html' | grep -c '/docs/index.html'
+```
+
+Expected: `1`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add website/src/routes/docs.tsx website/src/routes/docs.cli.tsx website/src/routes/docs.troubleshooting.tsx
+git add website/src website/tests
 git commit -m "feat(website): add quick start, CLI reference, and troubleshooting pages"
 ```
 
