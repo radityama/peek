@@ -1,3 +1,4 @@
+import { Reveal } from '../../components/Reveal'
 import { RouteRail } from '../../components/RouteRail'
 import { ConnectionStory } from './ConnectionStory'
 import { HomeHero } from './HomeHero'
@@ -21,12 +22,24 @@ export function HomePage() {
     <>
       <RouteRail stops={railStops} />
       <HomeHero />
-      <OneCommand />
-      <ConnectionStory />
-      <ShareIntent />
-      <RealDevelopment />
-      <Transparency />
-      <Signoff />
+      <Reveal>
+        <OneCommand />
+      </Reveal>
+      <Reveal>
+        <ConnectionStory />
+      </Reveal>
+      <Reveal>
+        <ShareIntent />
+      </Reveal>
+      <Reveal>
+        <RealDevelopment />
+      </Reveal>
+      <Reveal>
+        <Transparency />
+      </Reveal>
+      <Reveal>
+        <Signoff />
+      </Reveal>
     </>
   )
 }
