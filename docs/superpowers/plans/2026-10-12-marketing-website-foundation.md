@@ -2429,18 +2429,18 @@ git commit -m "feat(website): assemble the homepage"
 
 ---
 
-## Plan 2 and Plan 3 outline (to be written next)
+## Follow-on plans
 
-**Plan 2 — Docs pipeline and secondary routes:**
-- Build-time Markdown adapters: read root `docs/*.md` and `CHANGELOG.md`, parse with a front-matter-free convention, and render at build time with `remark`/`rehype` + `shiki`.
-- `src/content/changelog.ts` (parse `## x.y.z — date` headings into releases) with Vitest coverage; `src/content/docs.ts` manifest.
-- Real `/features`, `/docs`, `/docs/cli`, `/docs/troubleshooting`, `/changelog`, `/security` pages replacing the stubs.
-- `notFoundComponent` 404 route; sitemap and `robots.txt`; enable `crawlLinks: true`.
+Plan 1 stops at a prerendered homepage. The remaining work is split into two
+plans that execute in order:
 
-**Plan 3 — Motion, QA, CI, deploy, PR:**
-- Scroll-reveal and rail active-state motion, all behind `useReducedMotion()`.
-- Playwright suite: copy feedback, mobile nav, terminal replay, reduced-motion mode, no horizontal overflow at 360/768/1440, keyboard-only nav.
-- Screenshot set and light a11y pass (headings, landmarks, contrast, focus order).
-- `.github/workflows/website.yml` filtered to `website/**` and the spec/plan docs; no Cloudflare network in CI.
-- Cloudflare Workers deploy via `@cloudflare/vite-plugin` + `wrangler`; documented in `website/README.md`.
-- Final antislop audit, root gate, push `feat/marketing-website`, open the PR.
+- [Plan 2 — docs pipeline and secondary routes](2026-10-12-marketing-website-docs.md):
+  build-time Markdown adapters for `CHANGELOG.md` and `docs/*.md`, a changelog
+  parser, the docs manifest and prose styles, real `/features`, `/docs`,
+  `/docs/cli`, `/docs/troubleshooting`, `/changelog`, and `/security` pages, the
+  404 route, and generated `sitemap.xml` / `robots.txt` with link crawling.
+- [Plan 3 — motion, QA, CI, deploy, PR](2026-10-12-marketing-website-qa-release.md):
+  reduced-motion-safe reveals and rail scroll spy, the Playwright and axe
+  suites, the screenshot script, `.github/workflows/website.yml`, the Cloudflare
+  Workers deploy configuration, the README, the antislop audit, and the push
+  and pull request.
