@@ -20,6 +20,7 @@ spec](docs/superpowers/specs/2026-09-24-peek-v0.1.0-design.md), and
 | `tests/integration` | Fake server/tunnel and CLI lifecycle tests. |
 | `tests/fixtures` | Tiny projects and processes; do not install frameworks here. |
 | `docs` | User, contributor, design, and decision documentation. |
+| `website` | Marketing site; an isolated package with its own lockfile, never published. |
 | `.github/workflows` | CI and tag release automation. |
 
 ## Non-negotiable invariants
@@ -63,6 +64,10 @@ port, lose a child process, accept a malformed URL, or execute an unverified
 binary. No CI test should require the public Cloudflare network. Run the full
 local gate before a release: lint, typecheck, test, build, and packed CLI smoke
 test. See [development](docs/DEVELOPMENT.md) for manual tunnel testing.
+
+The `website/` marketing site is a separate package with its own lockfile and
+commands; see `website/README.md`. Its dependencies are not CLI runtime
+dependencies.
 
 ## Release process
 
