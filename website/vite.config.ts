@@ -9,7 +9,7 @@ const rootPackage = JSON.parse(
 ) as { version: string }
 
 export default defineConfig({
-  server: { port: 3001 },
+  server: { port: 3001, fs: { allow: ['..'] } },
   define: { __PEEK_VERSION__: JSON.stringify(rootPackage.version) },
   plugins: [
     tailwindcss(),
