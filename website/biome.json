@@ -1,0 +1,22 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!!.output",
+      "!!.tanstack",
+      "!!.wrangler",
+      "!!dist",
+      "!!node_modules",
+      "!!pnpm-lock.yaml",
+      "!!src/routeTree.gen.ts"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "css": {
+    "parser": { "tailwindDirectives": true }
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" }
+  }
+}
