@@ -7,8 +7,10 @@
       "!!.wrangler",
       "!!dist",
       "!!node_modules",
+      "!!playwright-report",
       "!!pnpm-lock.yaml",
-      "!!src/routeTree.gen.ts"
+      "!!src/routeTree.gen.ts",
+      "!!test-results"
     ]
   },
   "formatter": { "indentStyle": "space", "indentWidth": 2 },
