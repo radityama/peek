@@ -108,6 +108,21 @@ forced by something the plan could not know until it ran.
    leave the page with no `h1` at all (axe `page-has-heading-one`). The feature
    tiles keep their `h2`s.
 
+8. **The Vite config imports `./src/lib/sitemap.ts` with the extension.** Vite
+   warns that an extensionless import is unsupported by the `native` config
+   loader that is planned to become the default, so `tsconfig.json` sets
+   `allowImportingTsExtensions: true` (valid because the project is `noEmit`).
+
+9. **`seoAssets` emits in the client environment only.** `generateBundle` runs
+   once per environment, so without the `this.environment.config.consumer`
+   guard `dist/server/` also received a copy of both files — dead weight in the
+   Worker bundle.
+
+10. **`sitemap.xml` and the prerendered pages are checked against each other by
+    `scripts/check-sitemap.mjs`, wired as `postbuild`.** A hand-maintained path
+    list only stays correct if something verifies it; a build that advertises a
+    page it did not generate (or omits one it did) now fails instead of shipping.
+
 ---
 
 ### Task 1: Changelog parser
@@ -1284,9 +1299,10 @@ export const Route = createRootRoute({
 
 In `website/vite.config.ts`:
 
-1. Add the import at the top:
+1. Add the import at the top (`allowImportingTsExtensions: true` in
+   `tsconfig.json` is required for the extension — see deviation 8):
 ```ts
-import { buildRobotsTxt, buildSitemapXml } from './src/lib/sitemap'
+import { buildRobotsTxt, buildSitemapXml } from './src/lib/sitemap.ts'
 ```
 
 2. Add a site URL and a plugin above `export default defineConfig`:
@@ -1330,11 +1346,13 @@ function seoAssets(): import('vite').Plugin {
 Run:
 ```bash
 pnpm -C website build
-find website/dist/client -name 'sitemap.xml' -o -name 'robots.txt' | sort
+find website/dist/client -maxdepth 1 \( -name 'sitemap.xml' -o -name 'robots.txt' \) | sort
 find website/dist/client -name '*.html' | wc -l
 ```
-Expected: `sitemap.xml` and `robots.txt` are emitted; the HTML count is at least
-7 (home, 6 secondary pages) — proving crawl-based prerender reached every route.
+Expected: `sitemap.xml` and `robots.txt` are emitted; the HTML count is 7
+(home, 6 secondary pages) — proving crawl-based prerender reached every route.
+The `postbuild` check (deviation 10) then asserts the sitemap lists exactly
+those 7 paths, so drift fails the build instead of relying on this command.
 
 - [ ] **Step 8: Full gate**
 
@@ -1348,7 +1366,7 @@ Expected: all exit 0.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add website/src/lib/sitemap.ts website/tests/unit/sitemap.test.ts website/src/routes/__root.tsx website/vite.config.ts
+git add website/src/lib/sitemap.ts website/tests/unit/sitemap.test.ts website/src/routes/__root.tsx website/vite.config.ts website/tsconfig.json website/package.json website/scripts/check-sitemap.mjs
 git commit -m "feat(website): add 404, sitemap, robots, and full link crawling"
 ```
 
@@ -1360,6 +1378,8 @@ git commit -m "feat(website): add 404, sitemap, robots, and full link crawling"
 - `website/dist/client` contains prerendered HTML for `/`, `/features`, `/docs`,
   `/docs/cli`, `/docs/troubleshooting`, `/changelog`, `/security`, plus
   `sitemap.xml` and `robots.txt`.
+- Every prerendered page appears in `sitemap.xml` and vice versa — enforced by
+  the `postbuild` check, not by eye.
 - No Markdown parser is present in the client bundle (rendering happens in
   loaders at build time).
 - Root `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` still pass.
