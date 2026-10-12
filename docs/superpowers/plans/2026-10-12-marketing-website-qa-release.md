@@ -962,8 +962,70 @@ root workflow and the website workflow.
 - `.github/workflows/website.yml` runs install, lint, typecheck, unit tests,
   build, and e2e for changes under `website/**`.
 - Cloudflare Workers configuration builds and previews locally; the deploy step
-  is documented as manual.
+  is documented as manual. Deviation 8 records the one part of this that could
+  not be executed in the development environment.
 - The antislop audit is complete and no product claim contradicts the CLI docs.
 - `feat/marketing-website` is pushed and a pull request is open.
 - The root CLI package still builds, packs, and passes its full gate without
   including any website file.
+
+---
+
+## Implementation deviations (decided during execution)
+
+These supersede the inline samples above wherever they conflict. Each was forced
+by something the plan could not know until it ran.
+
+1. **e2e runs against the production build on a dedicated port.** Playwright
+   serves `pnpm build` output through `vite preview --port 4321 --strictPort`
+   with `reuseExistingServer: false`, rather than the dev server on the
+   configured port. Port 3001 is held by an unrelated local service, and dev-mode
+   hydration finishes after `load`, so Playwright's first click is dropped — the
+   same specs scored 7/10 against dev and 10/10 against the build. The plan's
+   `dev:e2e` script was dropped instead of left defined and unused.
+
+2. **Task 2 Step 5 is not a valid check.** "Playwright exits 0 with zero tests"
+   is false: Playwright exits non-zero with `No tests found`. The step was
+   skipped and the first real signal came from Task 3's specs.
+
+3. **Playwright output needs explicit ignores.** `!!test-results` and
+   `!!playwright-report` were added to `website/biome.json`, and
+   `test-results/`, `playwright-report/`, and `screenshots/` to
+   `website/.gitignore`; Biome does not read `.gitignore` here.
+
+4. **`Reveal` applies its hidden state only after hydration.** `motion.div` with
+   `initial={{ opacity: 0 }}` SSR-renders `style="opacity:0"` into the
+   prerendered HTML, so the page depended on JS to become visible. Six call
+   sites now start visible in the static HTML and animate from the client.
+
+5. **AA compliance needed dark-surface tokens.** axe reported three real token
+   failures: `--color-ink-3` measured 3.29–3.49:1 on the light surfaces, and
+   `--color-accent` (3.08:1) and `--color-success` (3.18:1) on the terminal
+   surface. `--color-ink-3` was darkened to `oklch(0.53 0.01 95)` and new
+   `--color-dark-accent` / `--color-dark-success` tokens were added for use on
+   dark surfaces, following the existing `--color-dark-*` convention rather than
+   scoping overrides. The fix and its axe guard are separate commits.
+
+6. **`pnpm exec` forwards unknown flags**, which is what makes the workflow's
+   `pnpm -C website exec playwright install --with-deps chromium` valid. It was
+   not run locally because `--with-deps` shells out to `apt-get`.
+
+7. **`website/pnpm-workspace.yaml` is required, and pnpm 11 blocks installs on
+   undecided build scripts.** Without `allowBuilds: { esbuild: true, workerd:
+   true }` (both install a platform binary in postinstall), `pnpm -C website
+   install --frozen-lockfile` fails with `ERR_PNPM_IGNORED_BUILDS`, breaking the
+   `website.yml` workflow added in Task 6. The plan does not mention the file.
+
+8. **The Worker build is a separate target and could not be verified here.**
+   Registering `cloudflare()` unconditionally moves prerendering into `workerd`,
+   and in this development environment `workerd` fails to start *any* worker: a
+   three-line hello-world Worker fails identically with `service core:: Uncaught
+   Error:`, as does wrangler's own internal proxy worker. `vite build` therefore
+   fails at the prerender step with the plugin active. The plugin is registered
+   only for `vite build --mode cloudflare`, and `deploy` is `vite build --mode
+   cloudflare && wrangler deploy` instead of `pnpm build && wrangler deploy`.
+   Plain `pnpm build` keeps the validated prerender path and `pnpm preview`
+   serves the static `dist/client`. The configuration itself matches the
+   published TanStack Start + Cloudflare guide; what remains unverified is the
+   execution of the Worker bundle and `wrangler deploy`, which need an
+   environment where `workerd` runs.

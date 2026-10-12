@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { cloudflare } from '@cloudflare/vite-plugin'
 import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
@@ -11,6 +12,9 @@ const rootPackage = JSON.parse(
 ) as { version: string }
 
 const siteUrl = process.env.VITE_SITE_URL ?? 'http://localhost:3001'
+
+/** `vite build --mode cloudflare` is the Worker build; plain `build` is the static site. */
+const CLOUDFLARE_MODE = 'cloudflare'
 
 /**
  * Emits sitemap.xml and robots.txt as build assets so the absolute URLs always
@@ -34,14 +38,22 @@ function seoAssets(): import('vite').Plugin {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: { port: 3001, fs: { allow: ['..'] } },
   define: { __PEEK_VERSION__: JSON.stringify(rootPackage.version) },
   plugins: [
+    // The Cloudflare plugin must come first and own the SSR environment. It
+    // also moves prerendering into `workerd`, so the deployable Worker is a
+    // separate target from the static site: `vite build` emits `dist/client`,
+    // and `vite build --mode cloudflare` emits the Worker that `wrangler
+    // deploy` uploads.
+    ...(mode === CLOUDFLARE_MODE
+      ? [cloudflare({ viteEnvironment: { name: 'ssr' } })]
+      : []),
     tailwindcss(),
     tanstackStart({ prerender: { enabled: true, crawlLinks: true } }),
     // React's Vite plugin must come after the Start plugin.
     viteReact(),
     seoAssets(),
   ],
-})
+}))
