@@ -22,14 +22,14 @@ website/
 ├── src/
 │   ├── content/
 │   │   ├── changelog.ts                  # parseChangelog()
-│   │   ├── docs.ts                       # doc manifest + raw imports
-│   │   └── features.ts                   # authored feature/security content
+│   │   └── docs.ts                       # doc manifest + raw imports
 │   ├── lib/
 │   │   ├── markdown.ts                   # renderMarkdown(), extractHeadings()
-│   │   └── sitemap.ts                    # buildSitemap()
+│   │   └── sitemap.ts                    # sitemapPaths, buildSitemapXml(), buildRobotsTxt()
 │   ├── components/
 │   │   ├── Prose.tsx                     # .prose wrapper
 │   │   ├── DocsNav.tsx                   # docs sidebar / on-this-page
+│   │   ├── DocLayout.tsx                 # shared docs page layout
 │   │   └── NotFound.tsx
 │   ├── routes/
 │   │   ├── __root.tsx                    # + notFoundComponent
@@ -41,15 +41,16 @@ website/
 │   │   └── security.tsx                  # real page (was stub)
 │   └── styles/
 │       └── prose.css                     # imported by app.css
-├── public/
-│   ├── robots.txt
-│   └── sitemap.xml
 └── tests/unit/
     ├── changelog.test.ts
     ├── markdown.test.ts
     ├── docs.test.ts
     └── sitemap.test.ts
 ```
+
+`sitemap.xml` and `robots.txt` are emitted at build time by a small Vite plugin
+rather than committed to `public/`, so their absolute URLs always match the
+deployed origin.
 
 ---
 
