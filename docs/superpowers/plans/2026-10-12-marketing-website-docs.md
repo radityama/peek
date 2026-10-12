@@ -91,6 +91,23 @@ forced by something the plan could not know until it ran.
    even when the visible DOM is wrong. Strip `<script>…</script>` before checking
    (this is exactly how the duplicate-`/docs` bug hid during Task 4).
 
+5. **The changelog page renders through `renderChangelog`, not the loader body
+   in Task 5's snippet.** Same rule as deviation 1: the parser and Markdown
+   renderer live in `docs-render.ts` wrappers so the route only calls a server
+   function.
+
+6. **`docsNav` was renamed to `docsManifest`, and the sidebar moved to
+   `docsSidebar`.** `/security` renders `docs/SECURITY.md` outside the manifest,
+   so reusing `docsNav` as the sidebar list would leave nothing highlighted on
+   that page. `docsManifest` keeps the source-bearing entries (`docs.test.ts`
+   still asserts their hrefs live under `/docs`), and `docsSidebar` adds the
+   authored `/docs` and `/security` links.
+
+7. **The features page uses a real `h1`.** Task 6's snippet used
+   `SectionHeading`, which renders an `h2`; as the page's only title that would
+   leave the page with no `h1` at all (axe `page-has-heading-one`). The feature
+   tiles keep their `h2`s.
+
 ---
 
 ### Task 1: Changelog parser
@@ -929,13 +946,11 @@ git commit -m "feat(website): add quick start, CLI reference, and troubleshootin
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
-import changelogSource from '../../../CHANGELOG.md?raw'
 import { Container } from '../components/Container'
 import { Eyebrow } from '../components/Eyebrow'
 import { Prose } from '../components/Prose'
 import { version } from '../content/version'
-import { parseChangelog } from '../content/changelog'
-import { renderMarkdown } from '../lib/markdown'
+import { renderChangelog } from '../lib/docs-render'
 
 export const Route = createFileRoute('/changelog')({
   head: () => ({
@@ -947,16 +962,7 @@ export const Route = createFileRoute('/changelog')({
       },
     ],
   }),
-  loader: async () => {
-    const releases = parseChangelog(changelogSource)
-    const rendered = await Promise.all(
-      releases.map(async (release) => ({
-        ...release,
-        html: await renderMarkdown(release.body),
-      })),
-    )
-    return { releases: rendered }
-  },
+  loader: () => renderChangelog(),
   component: ChangelogPage,
 })
 
@@ -1006,7 +1012,17 @@ Run:
 pnpm -C website build && pnpm -C website typecheck && pnpm -C website lint
 find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Release history'
 ```
-Expected: gate passes; the grep prints the changelog HTML file.
+Expected: gate passes. Check the rendered DOM (after stripping `<script>` blocks,
+see deviation 4) for `Release history`, `<section id="v0.3.0"`, and one `<time>`
+per release. Also confirm the raw source stayed out of the JS bundle:
+
+```bash
+! grep -rlF 'interactive migration notice' website/dist/client/assets
+```
+
+The phrase is unique to `CHANGELOG.md`, so any match in a `.js` asset means the
+raw file leaked into the client bundle. (It legitimately appears inside
+`dist/client/changelog/index.html`, which is the page's own content.)
 
 - [ ] **Step 3: Commit**
 
@@ -1107,10 +1123,9 @@ function FeaturesPage() {
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
-import securitySource from '../../../docs/SECURITY.md?raw'
 import { DocLayout } from '../components/DocLayout'
 import { Prose } from '../components/Prose'
-import { extractHeadings, renderMarkdown } from '../lib/markdown'
+import { renderSecurityDoc } from '../lib/docs-render'
 
 export const Route = createFileRoute('/security')({
   head: () => ({
@@ -1123,10 +1138,7 @@ export const Route = createFileRoute('/security')({
       },
     ],
   }),
-  loader: async () => ({
-    html: await renderMarkdown(securitySource),
-    headings: extractHeadings(securitySource),
-  }),
+  loader: () => renderSecurityDoc(),
   component: SecurityPage,
 })
 
@@ -1146,14 +1158,19 @@ function SecurityPage() {
 }
 ```
 
+Note the `h1` in Step 1: `SectionHeading` renders an `h2`, so using it as the
+page title would leave the page with no `h1` (see deviation 7).
+
 - [ ] **Step 3: Build, typecheck, lint, verify**
 
 Run:
 ```bash
 pnpm -C website build && pnpm -C website typecheck && pnpm -C website lint
-find website/dist/client -name '*.html' -print0 | xargs -0 grep -l 'Threat model'
 ```
-Expected: gate passes; grep prints the security HTML file.
+Expected: gate passes. Check the rendered DOM (scripts stripped, see
+deviation 4): the features page has exactly one `h1` and six `h2` tiles; the
+security page has one `h1`, the four `##` sections from `SECURITY.md` with
+anchors, and a sidebar link to `/security` carrying `aria-current="page"`.
 
 - [ ] **Step 4: Commit**
 
