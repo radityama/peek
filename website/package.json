@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite dev --port 3001",
     "build": "vite build",
+    "postbuild": "node scripts/check-sitemap.mjs",
     "preview": "vite preview --port 3001",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
