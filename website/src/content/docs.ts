@@ -29,8 +29,8 @@ export const docsManifest: readonly DocEntry[] = [
 
 /**
  * Sidebar links for every documentation page. Wider than `docsManifest`: the
- * quick start is authored, and `/security` renders `docs/SECURITY.md` through
- * its own server function rather than this manifest.
+ * quick start is authored, and `/security` renders through its own server
+ * function.
  */
 export const docsSidebar: readonly { href: string; title: string }[] = [
   { href: '/docs', title: 'Quick start' },

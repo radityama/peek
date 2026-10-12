@@ -8,7 +8,7 @@ import { site } from '../content/site'
 export const Route = createFileRoute('/docs')({
   head: () => ({
     meta: [
-      { title: 'Documentation — Peek' },
+      { title: 'Documentation · Peek' },
       {
         name: 'description',
         content:

@@ -8,7 +8,7 @@ import { renderChangelog } from '../lib/docs-render'
 export const Route = createFileRoute('/changelog')({
   head: () => ({
     meta: [
-      { title: 'Changelog — Peek' },
+      { title: 'Changelog · Peek' },
       {
         name: 'description',
         content: 'Every release of the Peek CLI, newest first.',

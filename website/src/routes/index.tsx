@@ -5,7 +5,7 @@ import { HomePage } from '../sections/home/HomePage'
 export const Route = createFileRoute('/')({
   head: () => ({
     meta: [
-      { title: 'Peek — Run your dev server. Share it instantly.' },
+      { title: 'Peek · Run your dev server. Share it instantly.' },
       {
         name: 'description',
         content:
@@ -13,7 +13,7 @@ export const Route = createFileRoute('/')({
       },
       {
         property: 'og:title',
-        content: 'Peek — Run your dev server. Share it instantly.',
+        content: 'Peek · Run your dev server. Share it instantly.',
       },
       {
         property: 'og:description',

@@ -6,7 +6,7 @@ import { TextLink } from '../components/TextLink'
 export const Route = createFileRoute('/features')({
   head: () => ({
     meta: [
-      { title: 'Features — Peek' },
+      { title: 'Features · Peek' },
       {
         name: 'description',
         content:

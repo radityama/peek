@@ -8,8 +8,8 @@ interface NavLinkProps {
 
 /**
  * Site content is plain data, so `to` is a string rather than a route literal.
- * Route existence is enforced by the route definitions themselves; the cast
- * keeps the content declarative without weakening the router's own types.
+ * The cast keeps content declarative; route definitions still enforce what
+ * exists.
  */
 export function NavLink({ item, className }: NavLinkProps) {
   if (item.external) {

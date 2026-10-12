@@ -13,11 +13,10 @@ import { visit } from 'unist-util-visit'
 import type { DocumentHeading } from './headings'
 
 /**
- * `@shikijs/rehype` preloads every bundled grammar unless `langs` is given —
- * 346 languages, several seconds of cold start, and hundreds of dynamic import
- * chunks in the server build. Unlisted languages fail the build loudly, so add
- * one here when a docs fence needs it. Plain text (`text`, `plaintext`, `txt`)
- * is a built-in special language and needs no entry.
+ * `@shikijs/rehype` preloads every bundled grammar unless `langs` is given:
+ * 346 languages, seconds of cold start, hundreds of dynamic import chunks.
+ * Unlisted languages fail the build, so add one here when a docs fence needs
+ * it. Plain text needs no entry.
  */
 const SHIKI_LANGS = [
   'sh',
@@ -33,8 +32,8 @@ const SHIKI_LANGS = [
 ] as const
 
 /**
- * Every docs page supplies its own `h1`, so a leading `# Title` in the source
- * would render a second, duplicate one.
+ * Every docs page supplies its own `h1`, so a leading `# Title` from the source
+ * would render a duplicate.
  */
 function stripLeadingTitle(tree: Root): void {
   const index = tree.children.findIndex((node) => node.type !== 'html')
@@ -49,12 +48,9 @@ function remarkStripLeadingTitle() {
 }
 
 /**
- * Renders repository Markdown to HTML. Raw HTML in the source is dropped by
- * remark-rehype (no rehype-raw), so the output only contains nodes this
- * pipeline created.
- *
- * This module is server-only: it must never reach the browser bundle. Route
- * modules reach it through the server functions in `docs-render.ts`.
+ * Raw HTML in the source is dropped by remark-rehype (no rehype-raw), so the
+ * output only holds nodes this pipeline created. Server-only: route modules
+ * reach it through the server functions in `docs-render.ts`.
  */
 export async function renderMarkdown(markdown: string): Promise<string> {
   const file = await unified()

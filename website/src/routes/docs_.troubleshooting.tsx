@@ -5,7 +5,7 @@ import { renderDoc } from '../lib/docs-render'
 
 export const Route = createFileRoute('/docs_/troubleshooting')({
   head: () => ({
-    meta: [{ title: 'Troubleshooting — Peek' }],
+    meta: [{ title: 'Troubleshooting · Peek' }],
   }),
   loader: () => renderDoc({ data: 'troubleshooting' }),
   component: TroubleshootingDoc,

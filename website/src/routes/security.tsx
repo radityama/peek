@@ -6,7 +6,7 @@ import { renderSecurityDoc } from '../lib/docs-render'
 export const Route = createFileRoute('/security')({
   head: () => ({
     meta: [
-      { title: 'Security model — Peek' },
+      { title: 'Security model · Peek' },
       {
         name: 'description',
         content:

@@ -17,9 +17,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    // Run against the artifact that ships, not the dev server. In dev the module
-    // graph is unbundled, so hydration finishes well after the load event and a
-    // click issued by a test is silently dropped instead of failing.
+    // Run against the artifact that ships, not the dev server: in dev hydration
+    // finishes after load and a test's click is silently dropped.
     command: 'pnpm build && pnpm exec vite preview --port 4321 --strictPort',
     url: baseURL,
     // Always start our own server. Reusing whatever responds on the port is how

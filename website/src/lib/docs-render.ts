@@ -17,10 +17,8 @@ export interface RenderedRelease {
 }
 
 /**
- * Route loaders in TanStack Start run on the client too, so calling the
- * Markdown pipeline from one would ship unified and shiki to the browser.
- * These server functions keep the parser on the server: at prerender the
- * handler runs in process, and on client navigation it is one RPC call.
+ * Route loaders run on the client too; calling the Markdown pipeline from one
+ * would ship unified and shiki to the browser.
  */
 export const renderDoc = createServerFn({ method: 'GET' })
   .validator((slug: string) => slug)

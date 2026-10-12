@@ -1,7 +1,7 @@
 /**
- * Every public page, in crawl order. Deliberately explicit rather than derived
- * from the generated route tree: this list is the set of pages we want indexed,
- * and the build asserts it matches what prerender actually emitted.
+ * Every public page, in crawl order. Explicit rather than derived from the
+ * generated route tree: this is the set of pages we want indexed, and the build
+ * asserts it matches what prerender emitted.
  */
 export const sitemapPaths = [
   '/',

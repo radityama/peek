@@ -6,7 +6,7 @@ import { renderDoc } from '../lib/docs-render'
 
 export const Route = createFileRoute('/docs_/cli')({
   head: () => ({
-    meta: [{ title: 'CLI reference — Peek' }],
+    meta: [{ title: 'CLI reference · Peek' }],
   }),
   loader: () => renderDoc({ data: 'cli' }),
   component: CliDoc,

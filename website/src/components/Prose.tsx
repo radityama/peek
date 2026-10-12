@@ -6,9 +6,8 @@ interface ProseProps {
 }
 
 /**
- * Injects HTML produced by `renderMarkdown`. The input is trusted repository
- * Markdown rendered on the server; no user-supplied or runtime content reaches
- * this component.
+ * Injects HTML produced by `renderMarkdown` from trusted repository Markdown;
+ * no runtime or user-supplied content reaches this component.
  */
 export function Prose({ html, className }: ProseProps) {
   return (

@@ -8,11 +8,8 @@ interface RevealProps {
 }
 
 /**
- * Fades and lifts content into view once.
- *
  * The hidden state is applied only after hydration, so the prerendered HTML
- * ships every section fully visible: with JavaScript disabled, or before the
- * bundle runs, nothing is waiting on an animation to appear.
+ * ships every section fully visible instead of waiting on an animation.
  */
 export function Reveal({ children, delay = 0, className }: RevealProps) {
   const reduceMotion = useReducedMotion()

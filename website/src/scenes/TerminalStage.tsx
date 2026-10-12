@@ -61,7 +61,7 @@ export function TerminalStage() {
         <span className="h-2.5 w-2.5 rounded-full bg-dark-line" />
         <span className="h-2.5 w-2.5 rounded-full bg-dark-line" />
         <figcaption className="ml-2 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-dark-ink-2">
-          peek — terminal
+          peek · terminal
         </figcaption>
       </div>
       <div className="min-h-[13rem] rounded-lg bg-dark-surface p-4 font-mono text-mono-xs leading-relaxed text-dark-ink">
@@ -92,7 +92,7 @@ export function TerminalStage() {
       </div>
       <div className="flex items-center justify-between px-3 py-2">
         <p className="font-mono text-[0.6875rem] text-dark-ink-2">
-          Demo — hostname rotates each run.
+          Demo. Hostname rotates each run.
         </p>
         <button
           type="button"
